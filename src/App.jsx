@@ -1,6 +1,7 @@
+import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 
-import { IconSprite } from './components/Icon'
+import { Icon, IconSprite } from './components/Icon'
 import { AuthProvider } from './hooks/useAuth'
 import { RedirectIfSignedIn, RequireAuth } from './components/routing/Guards'
 
@@ -11,6 +12,27 @@ import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
 import Dashboard from './pages/resident/Dashboard'
 import ComponentSheet from './pages/dev/ComponentSheet'
+
+// face-api carries TensorFlow.js — about 1.5 MB of the bundle. Only the two
+// biometric screens need it, so they load on demand. Everyone else, including
+// a resident who only came to read an announcement on mobile data, never
+// downloads it.
+const FaceLogin = lazy(() => import('./pages/auth/FaceLogin'))
+const Enroll = lazy(() => import('./pages/auth/Enroll'))
+
+function LoadingScreen({ label = 'Loading…' }) {
+  return (
+    <div
+      style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', color: 'var(--ink-400)' }}
+      aria-busy="true"
+    >
+      <div style={{ textAlign: 'center' }}>
+        <Icon name="scan" size="lg" />
+        <p style={{ marginTop: 10, fontSize: 14 }}>{label}</p>
+      </div>
+    </div>
+  )
+}
 
 /**
  * Route table.
@@ -48,7 +70,9 @@ export default function App() {
           path="/login/face"
           element={
             <RedirectIfSignedIn>
-              <Placeholder title="Face sign-in" phase="3" />
+              <Suspense fallback={<LoadingScreen label="Loading face recognition…" />}>
+                <FaceLogin />
+              </Suspense>
             </RedirectIfSignedIn>
           }
         />
@@ -77,7 +101,14 @@ export default function App() {
           <Route path="blotter" element={<Placeholder title="Blotter report" phase="4" />} />
           <Route path="appointments" element={<Placeholder title="Appointments" phase="4" />} />
           <Route path="profile" element={<Placeholder title="My profile" phase="4" />} />
-          <Route path="enroll" element={<Placeholder title="Face enrollment" phase="3" />} />
+          <Route
+            path="enroll"
+            element={
+              <Suspense fallback={<LoadingScreen label="Loading face recognition…" />}>
+                <Enroll />
+              </Suspense>
+            }
+          />
         </Route>
 
         {/* ---------- development reference ---------- */}
