@@ -1897,6 +1897,154 @@ select.control {
 }
 
 /* ------------------------------------------------------------
+   Filter chips
+   ------------------------------------------------------------ */
+.filterbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-600);
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  transition: border-color 0.16s, color 0.16s, background 0.16s;
+}
+.chip:hover {
+  border-color: var(--primary-300);
+  color: var(--primary-700);
+}
+.chip[aria-pressed='true'] {
+  background: var(--primary-700);
+  border-color: var(--primary-700);
+  color: #fff;
+}
+.chip .chip-n {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--ink-100);
+  color: var(--ink-600);
+}
+.chip[aria-pressed='true'] .chip-n {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------
+   Status timeline — the audit trail, rendered for residents
+   ------------------------------------------------------------ */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+.timeline li {
+  display: flex;
+  gap: 14px;
+  padding-bottom: 22px;
+  position: relative;
+}
+.timeline li:last-child {
+  padding-bottom: 0;
+}
+/* the connecting rail */
+.timeline li::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 32px;
+  bottom: 0;
+  width: 2px;
+  background: var(--ink-200);
+}
+.timeline li:last-child::before {
+  display: none;
+}
+.timeline .dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--success-500);
+  color: #fff;
+  position: relative;
+  z-index: 1;
+}
+.timeline li.now .dot {
+  background: var(--primary-700);
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+.timeline b {
+  display: block;
+  font-family: var(--display);
+  font-size: 15px;
+  color: var(--ink-900);
+  line-height: 1.35;
+}
+.timeline span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-400);
+  margin-top: 2px;
+}
+.timeline .note {
+  margin-top: 8px;
+  font-size: 13.5px;
+  color: var(--ink-600);
+  background: var(--ink-50);
+  border-left: 3px solid var(--ink-200);
+  padding: 10px 14px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+/* ------------------------------------------------------------
+   Appointment slot picker
+   ------------------------------------------------------------ */
+.slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 10px;
+}
+.slot {
+  padding: 12px 8px;
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--ink-200);
+  background: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-700);
+  text-align: center;
+  transition: border-color 0.16s, background 0.16s, color 0.16s;
+}
+.slot:hover:not(:disabled) {
+  border-color: var(--primary-400);
+  color: var(--primary-800);
+}
+.slot[aria-pressed='true'] {
+  background: var(--primary-700);
+  border-color: var(--primary-700);
+  color: #fff;
+}
+.slot:disabled {
+  background: var(--ink-50);
+  color: var(--ink-300);
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+/* ------------------------------------------------------------
    Component sheet (development reference only)
    ------------------------------------------------------------ */
 .sheet {

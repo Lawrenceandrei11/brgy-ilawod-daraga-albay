@@ -11,6 +11,14 @@ import ResidentLayout from './components/layout/ResidentLayout'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
 import Dashboard from './pages/resident/Dashboard'
+import Requests from './pages/resident/Requests'
+import NewRequest from './pages/resident/NewRequest'
+import RequestDetail from './pages/resident/RequestDetail'
+import Blotter from './pages/resident/Blotter'
+import Appointments from './pages/resident/Appointments'
+import ProfilePage from './pages/resident/Profile'
+import Anonymous from './pages/public/Anonymous'
+import Track from './pages/public/Track'
 import ComponentSheet from './pages/dev/ComponentSheet'
 
 // face-api carries TensorFlow.js — about 1.5 MB of the bundle. Only the two
@@ -51,9 +59,9 @@ export default function App() {
           <Route path="/" element={<Placeholder title="Landing page" phase="6" />} />
           <Route path="/services" element={<Placeholder title="Services" phase="6" />} />
           <Route path="/announcements" element={<Placeholder title="Announcements" phase="6" />} />
-          <Route path="/track" element={<Placeholder title="Track a request" phase="4" />} />
+          <Route path="/track" element={<Track />} />
           <Route path="/map" element={<Placeholder title="Barangay map" phase="6" />} />
-          <Route path="/anonymous" element={<Placeholder title="Anonymous message" phase="4" />} />
+          <Route path="/anonymous" element={<Anonymous />} />
           <Route path="/privacy" element={<Placeholder title="Privacy notice" phase="6" />} />
         </Route>
 
@@ -95,12 +103,12 @@ export default function App() {
           }
         >
           <Route index element={<Dashboard />} />
-          <Route path="requests" element={<Placeholder title="My requests" phase="4" />} />
-          <Route path="requests/new/:code" element={<Placeholder title="New request" phase="4" />} />
-          <Route path="requests/:ref" element={<Placeholder title="Request detail" phase="4" />} />
-          <Route path="blotter" element={<Placeholder title="Blotter report" phase="4" />} />
-          <Route path="appointments" element={<Placeholder title="Appointments" phase="4" />} />
-          <Route path="profile" element={<Placeholder title="My profile" phase="4" />} />
+          <Route path="requests" element={<Requests />} />
+          <Route path="requests/new/:code" element={<NewRequest />} />
+          <Route path="requests/:ref" element={<RequestDetail />} />
+          <Route path="blotter" element={<Blotter />} />
+          <Route path="appointments" element={<Appointments />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route
             path="enroll"
             element={
