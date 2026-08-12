@@ -20,6 +20,11 @@ import Appointments from './pages/resident/Appointments'
 import ProfilePage from './pages/resident/Profile'
 import Anonymous from './pages/public/Anonymous'
 import Track from './pages/public/Track'
+import Landing from './pages/public/Landing'
+import Services from './pages/public/Services'
+import { AnnouncementList, AnnouncementDetail } from './pages/public/Announcements'
+import BarangayMap from './pages/public/Map'
+import Privacy from './pages/public/Privacy'
 
 import AdminDashboard from './pages/admin/Dashboard'
 import RequestQueue from './pages/admin/RequestQueue'
@@ -70,13 +75,14 @@ export default function App() {
       <Routes>
         {/* ---------- public ---------- */}
         <Route element={<PublicLayout />}>
-          <Route path="/" element={<Placeholder title="Landing page" phase="6" />} />
-          <Route path="/services" element={<Placeholder title="Services" phase="6" />} />
-          <Route path="/announcements" element={<Placeholder title="Announcements" phase="6" />} />
+          <Route path="/" element={<Landing />} />
+          <Route path="/services" element={<Services />} />
+          <Route path="/announcements" element={<AnnouncementList />} />
+          <Route path="/announcements/:id" element={<AnnouncementDetail />} />
           <Route path="/track" element={<Track />} />
-          <Route path="/map" element={<Placeholder title="Barangay map" phase="6" />} />
+          <Route path="/map" element={<BarangayMap />} />
           <Route path="/anonymous" element={<Anonymous />} />
-          <Route path="/privacy" element={<Placeholder title="Privacy notice" phase="6" />} />
+          <Route path="/privacy" element={<Privacy />} />
         </Route>
 
         {/* ---------- auth ---------- */}
