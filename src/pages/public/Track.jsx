@@ -64,7 +64,7 @@ export default function Track() {
     <div className="section" style={{ maxWidth: 900 }}>
       <div className="section-head">
         <span className="eyebrow">Track a request</span>
-        <h2>Check where your request has got to</h2>
+        <h1>Check where your request has got to</h1>
         <p>
           You don't need an account. Enter the reference number from your receipt and the surname
           it was filed under.
@@ -120,9 +120,9 @@ export default function Track() {
                     <div className="ref" style={{ fontSize: 15, marginBottom: 4 }}>
                       {result.ref_no}
                     </div>
-                    <h3 style={{ fontSize: 19 }}>
+                    <h2 style={{ fontSize: 19 }}>
                       {result.kind === 'blotter' ? result.incident_type : result.service_name}
-                    </h3>
+                    </h2>
                   </div>
                   {result.kind === 'request' ? (
                     <Badge status={result.status} />
@@ -179,7 +179,7 @@ export default function Track() {
           </Notice>
 
           <Card padded style={{ background: 'var(--ink-50)' }}>
-            <h3 style={{ fontSize: 16.5, marginBottom: 12 }}>What this page shows</h3>
+            <h2 style={{ fontSize: 16.5, marginBottom: 12 }}>What this page shows</h2>
             <p style={{ fontSize: 14, color: 'var(--ink-500)' }}>
               Only the progress of the request: which document, what stage, and the dates. It never
               shows an address, a purpose, an ID number or a contact detail.
@@ -187,7 +187,7 @@ export default function Track() {
           </Card>
 
           <Card padded>
-            <h3 style={{ fontSize: 16.5, marginBottom: 12 }}>Lost your reference number?</h3>
+            <h2 style={{ fontSize: 16.5, marginBottom: 12 }}>Lost your reference number?</h2>
             <p style={{ fontSize: 14, color: 'var(--ink-500)', marginBottom: 16 }}>
               Sign in and every request you have filed is listed with its reference, or visit the
               barangay hall with a valid ID.

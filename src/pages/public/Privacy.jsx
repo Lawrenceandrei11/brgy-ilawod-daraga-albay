@@ -24,7 +24,7 @@ export default function Privacy() {
     <div className="section" style={{ maxWidth: 940 }}>
       <div className="section-head">
         <span className="eyebrow">Privacy notice</span>
-        <h2>What Barangay Ilawod holds about you, and why</h2>
+        <h1>What Barangay Ilawod holds about you, and why</h1>
         <p>
           Barangay Ilawod is the data controller for this system, under Republic Act 10173, the
           Data Privacy Act of 2012.
@@ -178,7 +178,7 @@ export default function Privacy() {
 function Section({ id, title, children }) {
   return (
     <Card padded id={id} style={{ scrollMarginTop: 90 }}>
-      <h3 style={{ fontSize: 21, marginBottom: 14 }}>{title}</h3>
+      <h2 style={{ fontSize: 21, marginBottom: 14 }}>{title}</h2>
       <div className="stack" style={{ gap: 14, fontSize: 15.5, lineHeight: 1.7, color: 'var(--ink-600)' }}>
         {children}
       </div>

@@ -120,7 +120,7 @@ export default function Profile() {
         </Notice>
       )}
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.4fr 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 24 }}>
           <Card flush>
             <CardHeader title="Identity">

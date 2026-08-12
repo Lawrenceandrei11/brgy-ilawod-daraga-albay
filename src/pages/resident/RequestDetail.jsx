@@ -120,7 +120,7 @@ export default function RequestDetail() {
         </div>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.5fr .85fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 24 }}>
           {request.status === 'rejected' && request.remarks && (
             <Notice tone="danger" icon="alert" title="This request needs correcting">

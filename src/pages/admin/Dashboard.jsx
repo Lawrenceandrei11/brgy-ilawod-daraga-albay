@@ -93,7 +93,7 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.55fr 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 24 }}>
           <Card flush>
             <CardHeader title="Oldest waiting">

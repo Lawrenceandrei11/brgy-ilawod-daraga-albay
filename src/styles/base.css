@@ -95,6 +95,29 @@ svg.ic-lg {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
+/* Main content beside a narrower aside — the layout nearly every detail
+   screen uses. This is a CLASS rather than an inline style on purpose: an
+   inline grid-template-columns beats the media query that collapses these
+   to one column, so on a phone the aside would never stack. */
+.grid-2.split {
+  grid-template-columns: 1.5fr 0.9fr;
+}
+
+/* Grid children default to min-width:auto, which means they refuse to shrink
+   below their own content and push the page wider than the screen. A long
+   unbroken label in a card is enough to do it. Every grid container in the
+   app is listed, because the failure is silent — the page just scrolls
+   sideways on a phone and nothing looks obviously broken. */
+.grid-2 > *,
+.grid-3 > *,
+.stats > *,
+.quick > *,
+.services > *,
+.ann-grid > *,
+.slots > *,
+.figures > * {
+  min-width: 0;
+}
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

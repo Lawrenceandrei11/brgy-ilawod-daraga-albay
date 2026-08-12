@@ -103,7 +103,7 @@ export default function NewRequest() {
         </Link>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.5fr .85fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <Card padded>
           <div className="row" style={{ gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
             <PngSlot name={service.icon} style={{ width: 56, height: 56, flex: 'none' }} />

@@ -31,7 +31,7 @@ export function AnnouncementList() {
     <div className="section">
       <div className="section-head">
         <span className="eyebrow">Announcements</span>
-        <h2>Notices from the barangay</h2>
+        <h1>Notices from the barangay</h1>
         <p>Everything the barangay has posted, newest first.</p>
       </div>
 
@@ -65,7 +65,7 @@ export function AnnouncementList() {
               <PngSlot name="announcement-placeholder.png" className="cover" />
               <div className="body">
                 <span className="date">{longDate(a.published_at)}</span>
-                <h3>{a.title}</h3>
+                <h2>{a.title}</h2>
                 <p>{a.excerpt}</p>
                 <Link to={`/announcements/${a.id}`} style={{ fontSize: 14, fontWeight: 600 }}>
                   Read the notice →
@@ -150,7 +150,7 @@ export function AnnouncementDetail() {
         <Icon name="chev" size="sm" style={{ transform: 'rotate(180deg)' }} /> All announcements
       </Link>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.6fr .8fr', gap: 32, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 32, alignItems: 'start' }}>
         <article>
           {a.category && <Badge tone="ready">{a.category}</Badge>}
           <h1 style={{ fontSize: 'clamp(26px,3.2vw,36px)', lineHeight: 1.15, margin: '16px 0 12px' }}>
@@ -179,7 +179,7 @@ export function AnnouncementDetail() {
 
         <aside className="stack" style={{ gap: 20 }}>
           <Card padded>
-            <h3 style={{ fontSize: 16.5, marginBottom: 14 }}>Other notices</h3>
+            <h2 style={{ fontSize: 16.5, marginBottom: 14 }}>Other notices</h2>
             <div className="stack" style={{ gap: 14 }}>
               {(others ?? []).map((o) => (
                 <Link key={o.id} to={`/announcements/${o.id}`} style={{ display: 'block' }}>
@@ -194,7 +194,7 @@ export function AnnouncementDetail() {
 
           <Card padded style={{ background: 'var(--primary-100)', borderColor: 'var(--primary-200)' }}>
             <Icon name="bell" size="lg" style={{ color: 'var(--primary-600)', marginBottom: 10 }} />
-            <h3 style={{ fontSize: 16.5, marginBottom: 8 }}>Get these on your dashboard</h3>
+            <h2 style={{ fontSize: 16.5, marginBottom: 8 }}>Get these on your dashboard</h2>
             <p style={{ fontSize: 14, color: 'var(--primary-800)', marginBottom: 16 }}>
               Registered residents see every notice when they sign in, alongside their own requests.
             </p>

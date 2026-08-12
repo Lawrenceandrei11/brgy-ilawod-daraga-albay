@@ -174,7 +174,7 @@ export default function ResidentReview() {
         </div>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.5fr .9fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 24 }}>
           {p.status === 'pending' && (
             <Card padded>

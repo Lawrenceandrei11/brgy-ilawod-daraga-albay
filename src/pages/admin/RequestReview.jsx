@@ -180,7 +180,7 @@ export default function RequestReview() {
         </div>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.5fr .9fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 24 }}>
           <Card padded>
             <h3 style={{ fontSize: 18, marginBottom: 6 }}>Move this request on</h3>

@@ -148,7 +148,7 @@ export default function Appointments() {
         </Notice>
       )}
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.4fr 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <Card padded>
           <h2 style={{ fontSize: 20, marginBottom: 8 }}>Pick a date and time</h2>
           <p style={{ fontSize: 14.5, color: 'var(--ink-500)', marginBottom: 22 }}>

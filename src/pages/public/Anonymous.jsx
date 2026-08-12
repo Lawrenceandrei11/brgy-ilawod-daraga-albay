@@ -139,7 +139,7 @@ export default function Anonymous() {
     <div className="section">
       <div className="section-head">
         <span className="eyebrow">Anonymous message</span>
-        <h2>Report a concern without giving your name</h2>
+        <h1>Report a concern without giving your name</h1>
         <p>
           No sign-in, no contact details, no account. Use this when putting your name to something
           would put you at risk.
@@ -229,7 +229,7 @@ export default function Anonymous() {
 
         <aside className="stack" style={{ gap: 18 }}>
           <Card padded style={{ background: 'var(--ink-50)' }}>
-            <h3 style={{ fontSize: 16.5, marginBottom: 14 }}>What you get back</h3>
+            <h2 style={{ fontSize: 16.5, marginBottom: 14 }}>What you get back</h2>
             <p style={{ fontSize: 14, color: 'var(--ink-500)', marginBottom: 18 }}>
               A reference code appears once, on screen. Write it down — because the message isn't
               tied to an account, we cannot retrieve it for you later.
@@ -241,7 +241,7 @@ export default function Anonymous() {
           </Card>
 
           <Card padded>
-            <h3 style={{ fontSize: 16.5, marginBottom: 14 }}>What we do not record</h3>
+            <h2 style={{ fontSize: 16.5, marginBottom: 14 }}>What we do not record</h2>
             <div className="stack" style={{ gap: 12 }}>
               {['Your name or Resident ID', 'Your email or phone number', 'Your IP address', 'Your device or browser'].map(
                 (t) => (

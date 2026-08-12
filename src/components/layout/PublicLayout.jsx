@@ -109,7 +109,7 @@ export function SiteFooter() {
         </div>
 
         <div>
-          <h4>Services</h4>
+          <h3>Services</h3>
           <Link to="/services">Barangay Clearance</Link>
           <Link to="/services">Certificate of Residency</Link>
           <Link to="/services">Certificate of Indigency</Link>
@@ -117,7 +117,7 @@ export function SiteFooter() {
         </div>
 
         <div>
-          <h4>Report</h4>
+          <h3>Report</h3>
           <Link to="/app/blotter">File a blotter report</Link>
           <Link to="/anonymous">Send an anonymous message</Link>
           <Link to="/app/appointments">Book an appointment</Link>
@@ -125,7 +125,7 @@ export function SiteFooter() {
         </div>
 
         <div>
-          <h4>About</h4>
+          <h3>About</h3>
           <Link to="/">Barangay officials</Link>
           <Link to="/map">Barangay map</Link>
           <Link to="/privacy">Privacy notice</Link>

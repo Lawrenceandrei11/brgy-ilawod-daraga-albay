@@ -179,7 +179,7 @@ function StepOne({ defaults, onNext, idFile, setIdFile }) {
   }
 
   return (
-    <div className="grid-2" style={{ gridTemplateColumns: '1.5fr .85fr', gap: 28, alignItems: 'start' }}>
+    <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
       <Card padded>
         <span className="eyebrow">Step 1 of 3</span>
         <h1 style={{ fontSize: 30, margin: '12px 0 10px' }}>Tell us who you are</h1>
@@ -416,7 +416,7 @@ function StepTwo({ defaults, onBack, onNext }) {
   } = useForm({ resolver: zodResolver(step2Schema), defaultValues: defaults })
 
   return (
-    <div className="grid-2" style={{ gridTemplateColumns: '1.5fr .85fr', gap: 28, alignItems: 'start' }}>
+    <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
       <Card padded>
         <span className="eyebrow">Step 2 of 3</span>
         <h1 style={{ fontSize: 30, margin: '12px 0 10px' }}>Where do you live?</h1>
@@ -644,7 +644,7 @@ function StepThree({ data, idFile, onBack, onError, onDone }) {
   ]
 
   return (
-    <div className="grid-2" style={{ gridTemplateColumns: '1.5fr .85fr', gap: 28, alignItems: 'start' }}>
+    <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
       <Card padded>
         <span className="eyebrow">Step 3 of 3</span>
         <h1 style={{ fontSize: 30, margin: '12px 0 10px' }}>Check your details</h1>

@@ -40,7 +40,7 @@ export default function Services() {
     <div className="section">
       <div className="section-head">
         <span className="eyebrow">Barangay services</span>
-        <h2>What the barangay can issue you</h2>
+        <h1>What the barangay can issue you</h1>
         <p>
           Fees and processing times are set by the barangay council and shown here as they stand
           today. Bring the requirements listed when you collect.
@@ -57,12 +57,12 @@ export default function Services() {
             const spec = SERVICE_FIELDS[s.code]
             return (
               <Card key={s.code} padded id={s.code} style={{ scrollMarginTop: 90 }}>
-                <div className="grid-2" style={{ gridTemplateColumns: '1.6fr .9fr', gap: 28, alignItems: 'start' }}>
+                <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
                   <div>
                     <div className="row" style={{ gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
                       <PngSlot name={s.icon} style={{ width: 56, height: 56, flex: 'none' }} />
                       <div className="grow">
-                        <h3 style={{ fontSize: 22 }}>{s.name}</h3>
+                        <h2 style={{ fontSize: 22 }}>{s.name}</h2>
                         <span style={{ fontSize: 13.5, color: 'var(--ink-400)' }}>
                           {s.kind === 'document' ? 'Barangay document' : s.kind === 'report' ? 'Incident record' : 'No account needed'}
                         </span>

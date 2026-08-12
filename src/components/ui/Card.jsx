@@ -12,10 +12,15 @@ export function Card({ padded = false, flush = false, children, className = '', 
   )
 }
 
+/**
+ * A card title is the second level of the page, under its <h1> — so it is an
+ * <h2>, not an <h3>. Screen-reader users navigate by heading level, and
+ * jumping h1 → h3 reads as a missing section.
+ */
 export function CardHeader({ title, children }) {
   return (
     <div className="card-hd">
-      <h3>{title}</h3>
+      <h2>{title}</h2>
       {children}
     </div>
   )

@@ -151,7 +151,7 @@ export default function Dashboard() {
       </div>
 
       <div>
-        <h3 style={{ fontSize: 18, marginBottom: 14 }}>Request a document</h3>
+        <h2 style={{ fontSize: 18, marginBottom: 14 }}>Request a document</h2>
         <div className="quick">
           {(services ?? []).map((s) => (
             <Link
@@ -172,7 +172,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.55fr 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 24 }}>
           <Card flush>
             <CardHeader title="My requests">

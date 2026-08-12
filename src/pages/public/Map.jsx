@@ -41,14 +41,14 @@ export default function BarangayMap() {
     <div className="section">
       <div className="section-head">
         <span className="eyebrow">Barangay map</span>
-        <h2>Barangay Ilawod at a glance</h2>
+        <h1>Barangay Ilawod at a glance</h1>
         <p>
           Find the hall, the health centre and the evacuation points, and check which purok your
           household belongs to before you file a request.
         </p>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1.4fr .8fr', gap: 28, alignItems: 'start' }}>
+      <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
         <Card padded>
           <div className="map-canvas" style={{ aspectRatio: '16 / 11' }}>
             <div className="river" />
@@ -112,7 +112,7 @@ export default function BarangayMap() {
         <aside className="stack" style={{ gap: 20 }}>
           <Card padded>
             <span className="eyebrow">{active.kind}</span>
-            <h3 style={{ fontSize: 20, margin: '10px 0 8px' }}>{active.label}</h3>
+            <h2 style={{ fontSize: 20, margin: '10px 0 8px' }}>{active.label}</h2>
             <p style={{ fontSize: 14.5, color: 'var(--ink-500)', marginBottom: 16 }}>{active.note}</p>
             <div className="stack" style={{ gap: 10 }}>
               <div className="row" style={{ gap: 10 }}>
@@ -129,7 +129,7 @@ export default function BarangayMap() {
           </Card>
 
           <Card padded>
-            <h3 style={{ fontSize: 16.5, marginBottom: 12 }}>Which purok am I in?</h3>
+            <h2 style={{ fontSize: 16.5, marginBottom: 12 }}>Which purok am I in?</h2>
             <p style={{ fontSize: 14, color: 'var(--ink-500)', marginBottom: 16 }}>
               Barangay Ilawod has {purokCount} puroks. If a utility bill or an older barangay
               document does not say, the secretary can confirm it from the household record.
