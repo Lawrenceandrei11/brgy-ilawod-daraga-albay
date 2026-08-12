@@ -3,10 +3,11 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { Icon, IconSprite } from './components/Icon'
 import { AuthProvider } from './hooks/useAuth'
-import { RedirectIfSignedIn, RequireAuth } from './components/routing/Guards'
+import { RedirectIfSignedIn, RequireAuth, RequireStaff } from './components/routing/Guards'
 
 import PublicLayout from './components/layout/PublicLayout'
 import ResidentLayout from './components/layout/ResidentLayout'
+import AdminLayout from './components/layout/AdminLayout'
 
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
@@ -19,6 +20,19 @@ import Appointments from './pages/resident/Appointments'
 import ProfilePage from './pages/resident/Profile'
 import Anonymous from './pages/public/Anonymous'
 import Track from './pages/public/Track'
+
+import AdminDashboard from './pages/admin/Dashboard'
+import RequestQueue from './pages/admin/RequestQueue'
+import RequestReview from './pages/admin/RequestReview'
+import Residents from './pages/admin/Residents'
+import ResidentReview from './pages/admin/ResidentReview'
+import BlotterAdmin from './pages/admin/BlotterAdmin'
+import AnonymousInbox from './pages/admin/AnonymousInbox'
+import AppointmentsAdmin from './pages/admin/AppointmentsAdmin'
+import AnnouncementsAdmin from './pages/admin/Announcements'
+import Officials from './pages/admin/Officials'
+import Reports from './pages/admin/Reports'
+
 import ComponentSheet from './pages/dev/ComponentSheet'
 
 // face-api carries TensorFlow.js — about 1.5 MB of the bundle. Only the two
@@ -117,6 +131,28 @@ export default function App() {
               </Suspense>
             }
           />
+        </Route>
+
+        {/* ---------- admin portal ---------- */}
+        <Route
+          path="/admin"
+          element={
+            <RequireStaff>
+              <AdminLayout />
+            </RequireStaff>
+          }
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="requests" element={<RequestQueue />} />
+          <Route path="requests/:ref" element={<RequestReview />} />
+          <Route path="residents" element={<Residents />} />
+          <Route path="residents/:id" element={<ResidentReview />} />
+          <Route path="blotter" element={<BlotterAdmin />} />
+          <Route path="anonymous" element={<AnonymousInbox />} />
+          <Route path="appointments" element={<AppointmentsAdmin />} />
+          <Route path="announcements" element={<AnnouncementsAdmin />} />
+          <Route path="officials" element={<Officials />} />
+          <Route path="reports" element={<Reports />} />
         </Route>
 
         {/* ---------- development reference ---------- */}

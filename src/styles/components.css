@@ -2045,6 +2045,148 @@ select.control {
 }
 
 /* ------------------------------------------------------------
+   Charts
+   Every chart here answers "how many", which is a magnitude question, so
+   bars carry ONE hue rather than a colour per category. Where a category
+   also has a status, the status colour rides on its badge — never on the
+   bar. Using the seven status colours as a chart palette was measured and
+   rejected: `ready` and `approved` sit at ΔE 10 in normal vision, below
+   the readability floor, before colour-blindness is even considered.
+   ------------------------------------------------------------ */
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chart-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) 1fr auto;
+  gap: 14px;
+  align-items: center;
+}
+.chart-row .lbl {
+  font-size: 13.5px;
+  color: var(--ink-600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chart-track {
+  position: relative;
+  height: 22px;
+  background: var(--ink-50);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+}
+.chart-bar {
+  height: 100%;
+  background: var(--primary-600);
+  /* rounded data-end only, anchored flat to the baseline */
+  border-radius: 0 4px 4px 0;
+  min-width: 2px;
+  transition: width 0.4s ease;
+}
+.chart-row .val {
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary-900);
+  min-width: 3ch;
+  text-align: right;
+}
+.chart-row:hover .chart-bar {
+  background: var(--primary-700);
+}
+
+/* vertical form, for months across time */
+.chart-cols {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 170px;
+  padding-top: 10px;
+}
+.chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.chart-col .col-bar {
+  width: 100%;
+  background: var(--primary-600);
+  border-radius: 4px 4px 0 0;
+  min-height: 3px;
+  transition: background 0.16s;
+}
+.chart-col:hover .col-bar {
+  background: var(--primary-700);
+}
+.chart-col .col-lbl {
+  font-size: 10.5px;
+  color: var(--ink-400);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.chart-col .col-val {
+  font-family: var(--display);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--primary-900);
+}
+
+/* recessive axis line */
+.chart-axis {
+  border-top: 1px solid var(--ink-200);
+  margin-top: 2px;
+}
+
+.chart-empty {
+  padding: 26px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-400);
+}
+
+/* hero numbers — a single figure is a tile, not a chart */
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+.figure {
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-xl);
+  padding: 22px;
+  box-shadow: var(--sh-card);
+}
+.figure .k {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-500);
+  margin-bottom: 10px;
+}
+.figure .v {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--primary-900);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+.figure .s {
+  font-size: 12.5px;
+  color: var(--ink-400);
+  margin-top: 5px;
+}
+
+/* ------------------------------------------------------------
    Component sheet (development reference only)
    ------------------------------------------------------------ */
 .sheet {
