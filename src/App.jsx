@@ -161,7 +161,7 @@ export default function App() {
           <Route path="reports" element={<Reports />} />
         </Route>
 
-        {/* ---------- development reference ---------- */}
+        {/* ---------- development reference -------------- */}
         <Route path="/dev/components" element={<ComponentSheet />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
