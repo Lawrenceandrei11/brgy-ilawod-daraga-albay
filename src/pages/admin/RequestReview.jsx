@@ -8,6 +8,7 @@ import { Badge, Button, Card, CardHeader, Field, Notice } from '../../components
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { Icon } from '../../components/Icon'
 import { REQUEST_STATUS, STATUS_TRANSITIONS } from '../../lib/status'
+import { smsStatusLabel } from '../../lib/sms'
 import { longDate, peso, shortDate, timeOnly } from '../../lib/formatters'
 import { SERVICE_FIELDS } from '../../lib/serviceFields'
 
@@ -56,6 +57,22 @@ export default function RequestReview() {
     },
   })
 
+  // Written by the notify_request_status trigger, never by this screen, so it
+  // records what actually happened rather than what this page believes.
+  const { data: texts } = useQuery({
+    queryKey: ['admin-request-sms', request?.id],
+    enabled: !!request?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sms_messages')
+        .select('id, status, created_at, sent_at, skip_reason, last_error')
+        .eq('request_id', request.id)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data
+    },
+  })
+
   async function moveTo(next) {
     // Returning a request without saying why leaves the resident guessing,
     // so the remark is required for that transition only.
@@ -82,6 +99,7 @@ export default function RequestReview() {
       queryClient.invalidateQueries({ queryKey: ['admin-request-history'] })
       queryClient.invalidateQueries({ queryKey: ['admin-requests'] })
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-request-sms'] })
     } catch (err) {
       setError(friendlyError(err, 'That change could not be saved.'))
     } finally {
@@ -147,6 +165,15 @@ export default function RequestReview() {
 
   const nextStates = STATUS_TRANSITIONS[r.status] ?? []
   const canCollectFee = role === 'treasurer' || role === 'captain' || role === 'secretary'
+
+  const lastText = texts?.[0]
+  // Why a text will not arrive is more useful than the silence itself, and
+  // both answers are already on the applicant record.
+  const cannotText = !p?.mobile
+    ? 'No mobile number on file'
+    : p?.sms_opt_in === false
+      ? 'Resident has texts turned off'
+      : null
 
   return (
     <div className="dash-body">
@@ -339,6 +366,16 @@ export default function RequestReview() {
                   <b style={{ marginLeft: 'auto', fontSize: 14 }}>{longDate(r.released_at)}</b>
                 </div>
               )}
+              <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 14, color: 'var(--ink-500)', flex: 'none' }}>Texts</span>
+                <b style={{ marginLeft: 'auto', fontSize: 14, textAlign: 'right' }}>
+                  {cannotText ??
+                    (lastText
+                      ? `${smsStatusLabel(lastText.status)} · ${shortDate(lastText.created_at)}`
+                      : 'None yet')}
+                </b>
+              </div>
+
               {r.services?.requires_council_review && (
                 <Notice tone="quiet" icon="users" title="Council review required">
                   This document needs the barangay council's finding before it can be approved.

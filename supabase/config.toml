@@ -1,0 +1,21 @@
+# Supabase CLI configuration.
+#
+# Added for one reason: both Edge Functions must be deployed without JWT
+# verification, and until now that lived only as a `--no-verify-jwt` flag in
+# the README and in whoever's shell history. Pinning it here means a plain
+# `supabase functions deploy` does the right thing.
+#
+# Everything else is left to the CLI's defaults on purpose.
+
+project_id = "barangay-e-assist"
+
+[functions.face-login]
+# Face sign-in happens *before* the resident has a session, so there is no JWT
+# to verify. The function does its own IP-keyed lockout and audit logging.
+verify_jwt = false
+
+[functions.sms-dispatch]
+# Not laxer than face-login, stricter. verify_jwt would accept any resident's
+# token and then let them drain the SMS queue; this function checks a
+# dedicated x-sms-dispatch-secret header instead.
+verify_jwt = false

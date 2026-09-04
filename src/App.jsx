@@ -37,6 +37,7 @@ import AppointmentsAdmin from './pages/admin/AppointmentsAdmin'
 import AnnouncementsAdmin from './pages/admin/Announcements'
 import Officials from './pages/admin/Officials'
 import Reports from './pages/admin/Reports'
+import SmsLog from './pages/admin/SmsLog'
 
 import ComponentSheet from './pages/dev/ComponentSheet'
 
@@ -157,6 +158,7 @@ export default function App() {
           <Route path="anonymous" element={<AnonymousInbox />} />
           <Route path="appointments" element={<AppointmentsAdmin />} />
           <Route path="announcements" element={<AnnouncementsAdmin />} />
+          <Route path="notifications" element={<SmsLog />} />
           <Route path="officials" element={<Officials />} />
           <Route path="reports" element={<Reports />} />
         </Route>

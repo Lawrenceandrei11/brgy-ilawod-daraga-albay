@@ -35,6 +35,7 @@ const NAV = [
     group: 'Barangay',
     items: [
       { to: '/admin/announcements', label: 'Announcements', icon: 'mega' },
+      { to: '/admin/notifications', label: 'Text messages', icon: 'bell' },
       { to: '/admin/officials', label: 'Officials', icon: 'user' },
       { to: '/admin/reports', label: 'Reports', icon: 'brief' },
     ],

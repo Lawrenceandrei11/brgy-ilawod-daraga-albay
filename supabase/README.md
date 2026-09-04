@@ -19,11 +19,71 @@ in migrations because they are project settings rather than schema:
    Email → uncheck *Confirm email*. Without this a new resident cannot sign in
    until they click a link, and Supabase's built-in mail only reliably reaches
    your own address.
-2. **Deploy the Edge Function** — `supabase functions deploy face-login
-   --no-verify-jwt`. The `--no-verify-jwt` is required, not sloppiness: face
+2. **Deploy the Edge Functions** — `supabase functions deploy face-login` and
+   `supabase functions deploy sms-dispatch`. Both are pinned to
+   `verify_jwt = false` in `config.toml`, which is why the flag no longer
+   appears here. For `face-login` that is required, not sloppiness: face
    sign-in happens *before* the resident has a session, so there is no JWT to
    verify. The function does its own input validation, IP-keyed lockout,
    distance thresholding and audit logging.
+
+3. **Turn on SMS** — see below. Until you do, migration 16 leaves
+   `settings.sms_enabled` at `false` and nothing is ever sent.
+
+## Switching SMS on
+
+Migration 16 adds the outbox, the trigger and the schedule, but ships dark on
+purpose: a deploy that immediately texted the whole barangay would be a bad
+first impression. Five steps, in order.
+
+1. **Enable the extensions** — Dashboard → Database → Extensions → turn on
+   `pg_cron` and `pg_net`. The migration tries to create them itself and
+   downgrades to a warning if it lacks the privilege, so check they are on.
+
+2. **Set the function secrets.** These never enter the repository, the
+   database, or the browser bundle:
+
+   ```bash
+   supabase secrets set SMS_API_KEY=sk-xxxxxxxx SMS_DISPATCH_SECRET=$(openssl rand -hex 32)
+   ```
+
+3. **Give the cron job the same dispatch secret**, from the SQL editor. It is
+   stored in Vault rather than in the migration for the obvious reason:
+
+   ```sql
+   select vault.create_secret('<the same hex>', 'sms_dispatch_secret', 'cron -> sms-dispatch');
+   update settings set value = jsonb_build_object('value',
+     'https://<project-ref>.supabase.co/functions/v1/sms-dispatch')
+   where key = 'sms_dispatch_url';
+   ```
+
+4. **Test against one handset before anyone else gets a text:**
+
+   ```sql
+   update settings set value = '{"value": "09XXXXXXXXX"}'::jsonb where key = 'sms_test_recipient';
+   update settings set value = '{"value": 20}'::jsonb            where key = 'sms_daily_cap';
+   update settings set value = '{"value": true}'::jsonb          where key = 'sms_enabled';
+   ```
+
+   Every message now goes to that number, whoever it was addressed to. The
+   admin **Text messages** screen shows both: `recipient` is who it was for,
+   `sent_to` is where it actually went.
+
+5. **Go live** — clear `sms_test_recipient` back to `{"value": null}` and
+   raise `sms_daily_cap`. `sms_enabled` can be switched off again at any time
+   by the captain; nothing queues while it is off.
+
+### Why SMS is a queue
+
+The provider allows **one message every ten seconds**. A notice sent to two
+hundred residents therefore takes over half an hour, which cannot happen
+inside one HTTP request. So `sms_messages` is an outbox: the trigger and the
+announcement RPC only ever write a row, `pg_cron` ticks every ten seconds, and
+`claim_sms()` hands out at most one message at a time.
+
+The consequence worth knowing: **queueing a text never touches the network.**
+If the provider is down, rows sit in the queue and approving a clearance,
+releasing a document and publishing a notice all carry on exactly as before.
 
 ## The migrations
 
@@ -45,6 +105,7 @@ in migrations because they are project settings rather than schema:
 | 13 | `..._13_guard_request_columns` | stops residents editing their own fee |
 | 14 | `..._14_fix_compound_surname_matching` | fixes tracking for Filipino compound surnames |
 | 15 | `..._15_admin_operations` | `approve_resident()`, `confirm_face_enrollment()`, `admin_stats()` |
+| 16 | `..._16_sms_notifications` | the `sms_messages` outbox, `profiles.sms_opt_in`, the status trigger, `claim_sms()` and the pg_cron tick |
 
 ### Why there are two migrations numbered 09
 

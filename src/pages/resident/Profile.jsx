@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { supabase, friendlyError } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { Badge, Button, Card, CardHeader, Field, Notice, PngSlot } from '../../components/ui'
+import { Badge, Button, Card, CardHeader, Check, Field, Notice, PngSlot } from '../../components/ui'
 import { Icon } from '../../components/Icon'
 import { longDate, shortDate } from '../../lib/formatters'
 
@@ -18,6 +18,7 @@ const schema = z.object({
   years_of_residency: z.coerce.number().int().min(0).max(120),
   household_head: z.string().trim().optional(),
   household_size: z.coerce.number().int().min(1).max(30).optional(),
+  sms_opt_in: z.boolean().default(true),
 })
 
 export default function Profile() {
@@ -53,6 +54,7 @@ export default function Profile() {
       years_of_residency: profile?.years_of_residency ?? 0,
       household_head: profile?.household_head ?? '',
       household_size: profile?.household_size ?? '',
+      sms_opt_in: profile?.sms_opt_in ?? true,
     },
   })
 
@@ -72,6 +74,9 @@ export default function Profile() {
           years_of_residency: Number(values.years_of_residency),
           household_head: values.household_head || null,
           household_size: values.household_size ? Number(values.household_size) : null,
+          // guard_profile_columns deliberately leaves this one alone, which is
+          // what lets a resident switch their own texts off.
+          sms_opt_in: values.sms_opt_in,
         })
         .eq('id', profile.id)
       if (error) throw error
@@ -220,6 +225,17 @@ export default function Profile() {
                   error={errors.household_size?.message}
                   {...register('household_size')}
                 />
+
+                <div className="span-2">
+                  <div className="field">
+                    <label style={{ marginBottom: 8 }}>Text messages</label>
+                    <Check
+                      title="Text me about my requests"
+                      description="We text the number above when a request is approved, ready for pickup, released, returned for correction or scheduled, and when the barangay sends an urgent notice. Untick this to stop them."
+                      {...register('sms_opt_in')}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div style={{ borderTop: '1px solid var(--ink-100)', marginTop: 24, paddingTop: 22 }}>
