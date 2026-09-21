@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { Badge, Button, Card, CardHeader, PngSlot } from '../../components/ui'
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { Icon } from '../../components/Icon'
+import { MyAvatar } from '../../components/MyAvatar'
 import { firstName, shortDate, dayParts, timeOnly } from '../../lib/formatters'
 import { OPEN_STATUSES } from '../../lib/status'
 
@@ -103,7 +104,7 @@ export default function Dashboard() {
                   }.`}
           </p>
         </div>
-        <PngSlot name="resident-placeholder.png" className="av" pill quiet onDark />
+        <MyAvatar name="resident-placeholder.png" className="av" pill quiet onDark />
       </div>
 
       <div className="stats">

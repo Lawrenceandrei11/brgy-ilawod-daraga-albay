@@ -8,6 +8,7 @@ import { supabase, friendlyError } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge, Button, Card, CardHeader, Check, Field, Notice, PngSlot } from '../../components/ui'
 import { Icon } from '../../components/Icon'
+import { ProfilePictureCard } from '../../components/ProfilePictureCard'
 import { longDate, shortDate } from '../../lib/formatters'
 
 const schema = z.object({
@@ -127,6 +128,8 @@ export default function Profile() {
 
       <div className="grid-2 split" style={{ gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 24 }}>
+          <ProfilePictureCard placeholder="resident-placeholder.png" />
+
           <Card flush>
             <CardHeader title="Identity">
               <Badge tone={status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'pending'}>

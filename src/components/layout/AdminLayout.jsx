@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useQuery } from '@tanstack/react-query'
 
 import { Icon } from '../Icon'
+import { MyAvatar } from '../MyAvatar'
 import { Button, PngSlot } from '../ui'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
@@ -123,13 +124,14 @@ export default function AdminLayout() {
             <input placeholder="Search by reference number or resident name" />
           </div>
 
-          <div className="who">
-            <PngSlot name="official-placeholder.png" className="av" pill quiet />
+          {/* The Admin portal has no profile menu item; your own name is the way in. */}
+          <Link to="/admin/profile" className="who" title="My profile">
+            <MyAvatar name="official-placeholder.png" caption={false} className="av" pill quiet />
             <div>
               <b>{shortName(profile?.full_name) || 'Staff'}</b>
               <span>{ROLE_LABEL[role] ?? role}</span>
             </div>
-          </div>
+          </Link>
         </div>
 
         <Outlet context={{ stats }} />

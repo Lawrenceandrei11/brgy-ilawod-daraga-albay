@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useQuery } from '@tanstack/react-query'
 
 import { Icon } from '../Icon'
+import { MyAvatar } from '../MyAvatar'
 import { Button, PngSlot } from '../ui'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
@@ -120,7 +121,7 @@ export default function ResidentLayout() {
           </button>
 
           <div className="who">
-            <PngSlot name="resident-placeholder.png" className="av" pill quiet />
+            <MyAvatar name="resident-placeholder.png" className="av" pill quiet />
             <div>
               <b>{shortName(profile?.full_name) || 'Resident'}</b>
               <span>

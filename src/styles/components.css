@@ -360,6 +360,12 @@ select.control {
   word-break: break-word;
   opacity: var(--label, 1);
 }
+/* PngSlot sets data-caption when the slot should say something other than
+   its filename -- empty for a placeholder residents see, like an official's
+   portrait, where a filename would read as a broken image. */
+[data-png][data-caption]::after {
+  content: attr(data-caption);
+}
 [data-png].has-img {
   border-style: solid;
   border-color: transparent;
@@ -2036,6 +2042,43 @@ select.control {
   padding-left: 8px;
   border-left: 1px solid var(--ink-200);
   margin-left: 2px;
+}
+/* In the Admin portal the name block links to the profile page. */
+a.who {
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  padding-right: 6px;
+  color: inherit;
+}
+a.who:hover b {
+  color: var(--primary-700);
+}
+
+/* A saved profile picture, wherever an avatar placeholder used to be: same
+   box as the placeholder (the class it is given sets the size), cropped to a
+   circle without distortion. */
+.avatar-img {
+  display: block;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--ink-100);
+}
+/* The picture editor on both profile pages. */
+.avatar-edit {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.avatar-edit-pic {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  border: 1px solid var(--ink-200);
+}
+.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
 }
 .who .av {
   width: 40px;

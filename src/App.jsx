@@ -38,6 +38,7 @@ import AnnouncementsAdmin from './pages/admin/Announcements'
 import Officials from './pages/admin/Officials'
 import Reports from './pages/admin/Reports'
 import SmsLog from './pages/admin/SmsLog'
+import AdminProfile from './pages/admin/Profile'
 
 import ComponentSheet from './pages/dev/ComponentSheet'
 
@@ -161,6 +162,7 @@ export default function App() {
           <Route path="notifications" element={<SmsLog />} />
           <Route path="officials" element={<Officials />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="profile" element={<AdminProfile />} />
         </Route>
 
         {/* ---------- development reference -------------- */}
