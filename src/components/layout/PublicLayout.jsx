@@ -5,6 +5,9 @@ import { Button, PngSlot } from '../ui'
 import { useAuth } from '../../hooks/useAuth'
 
 const LINKS = [
+  // `end`: every path starts with "/", so without it Home would show as the
+  // current page everywhere.
+  { to: '/', label: 'Home', end: true },
   { to: '/services', label: 'Services' },
   { to: '/announcements', label: 'Announcements' },
   { to: '/track', label: 'Track a request' },
@@ -32,7 +35,7 @@ export function PublicNav() {
 
         <div className="links">
           {LINKS.map((l) => (
-            <NavLink key={l.to} to={l.to} className={({ isActive }) => (isActive ? 'active' : '')}>
+            <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => (isActive ? 'active' : '')}>
               {l.label}
             </NavLink>
           ))}
@@ -67,7 +70,7 @@ export function PublicNav() {
 
       <div className={`mobile-menu ${open ? 'open' : ''}`.trim()} key={location.pathname}>
         {LINKS.map((l) => (
-          <NavLink key={l.to} to={l.to} onClick={close}>
+          <NavLink key={l.to} to={l.to} end={l.end} onClick={close}>
             {l.label}
           </NavLink>
         ))}

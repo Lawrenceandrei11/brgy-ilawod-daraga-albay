@@ -452,6 +452,20 @@ select.control {
   border: 1.5px solid var(--ink-200);
   place-items: center;
 }
+/* Logo, five links and two buttons fit on one line from a 1320px window
+   (measured). Narrower, the brand name wrapped onto two lines and, below
+   about 1085px, the row pushed the whole page sideways. So the header
+   switches to its menu button at 1320px and below, well before the rest of
+   the layout goes single-column at 900px. */
+@media (max-width: 1320px) {
+  .site-nav .links,
+  .site-nav .acts {
+    display: none;
+  }
+  .burger {
+    display: grid;
+  }
+}
 
 /* mobile menu sheet — the prototype only hid the links; a real site needs
    somewhere for them to go */
