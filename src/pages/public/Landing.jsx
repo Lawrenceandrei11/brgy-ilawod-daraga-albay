@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase'
 import { Button, Card, PngSlot } from '../../components/ui'
 import { Icon } from '../../components/Icon'
 import { longDate, pesoShort, turnaround } from '../../lib/formatters'
+import { MapPreview } from '../../components/MapPreview'
+import { LEGEND as MAP_LEGEND } from './Map'
 
 /**
  * The public landing page, ported from the prototype.
@@ -224,39 +226,23 @@ export default function Landing() {
         <div className="map-band">
           <div>
             <span className="eyebrow">Barangay map</span>
-            <h2 style={{ fontSize: 28, margin: '12px 0' }}>
-              Find the hall, purok lines and evacuation points
-            </h2>
+            <h2 style={{ fontSize: 28, margin: '12px 0' }}>Explore Barangay Ilawod</h2>
             <p style={{ fontSize: 15.5, color: 'var(--ink-500)' }}>
-              Puroks are outlined so you can confirm which one your household belongs to before you
-              file a request — the wrong purok is the most common reason a clearance gets sent back.
+              Find important barangay locations, facilities, and evacuation points in one place.
             </p>
+            {/* The full map's own legend, so the colours match its markers. */}
             <div className="map-legend">
-              <div>
-                <b style={{ background: 'var(--primary-700)' }} /> Barangay hall &amp; health centre
-              </div>
-              <div>
-                <b style={{ background: 'var(--accent-500)' }} /> Purok boundaries (1–7)
-              </div>
-              <div>
-                <b style={{ background: 'var(--success-500)' }} /> Evacuation points
-              </div>
+              {MAP_LEGEND.map((l) => (
+                <div key={l.kind}>
+                  <b className={`imap-dot-${l.kind}`} /> {l.label}
+                </div>
+              ))}
             </div>
-            <Button to="/map" variant="secondary" size="m" auto icon="pin" style={{ marginTop: 22 }}>
+            <Button to="/map" size="m" auto icon="pin" style={{ marginTop: 22 }}>
               Open the full map
             </Button>
           </div>
-          <div className="map-canvas">
-            <div className="river" />
-            {[
-              { left: '34%', top: '38%' },
-              { left: '62%', top: '30%' },
-              { left: '48%', top: '72%' },
-              { left: '78%', top: '60%' },
-            ].map((pos) => (
-              <PngSlot key={`${pos.left}-${pos.top}`} name="map-marker.png" className="pin" style={pos} />
-            ))}
-          </div>
+          <MapPreview />
         </div>
       </section>
 

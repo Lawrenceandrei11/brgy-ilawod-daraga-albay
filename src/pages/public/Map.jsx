@@ -23,12 +23,12 @@ import { Icon } from '../../components/Icon'
 // and returns ("Back to Barangay Ilawod") here.
 const HALL = [13.147336671465483, 123.71653936874432]
 const ILAWOD = HALL
-const HOME_ZOOM = 16
+export const HOME_ZOOM = 16
 
 // position: [latitude, longitude], as supplied by the barangay. A place with
 // position: null is listed but not pinned. The hall and the health centre
 // share a building, hence the same point.
-const PLACES = [
+export const PLACES = [
   {
     key: 'ilawod',
     label: 'Barangay Ilawod',
@@ -87,7 +87,7 @@ const MARKER_OFFSETS = (() => {
   return offsets
 })()
 
-const LEGEND = [
+export const LEGEND = [
   { kind: 'office', label: 'Barangay Hall' },
   { kind: 'health', label: 'Health Centre' },
   { kind: 'evacuation', label: 'Evacuation points' },
@@ -96,7 +96,7 @@ const LEGEND = [
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 const ESRI_ATTRIBUTION = 'Imagery &copy; Esri, Maxar, Earthstar Geographics'
 
-const TILES = {
+export const TILES = {
   map: {
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     options: { maxZoom: 19, attribution: OSM_ATTRIBUTION },
@@ -164,7 +164,7 @@ const PIN_W = 40
 const PIN_H = 50
 
 // Only compile-time constants go into these HTML strings.
-function placeIcon(L, place) {
+export function placeIcon(L, place) {
   if (place.key === 'ilawod') {
     // A 40x50 pin: the logo disc on top, a pointer below whose tip is the
     // bottom-centre pixel (20, 50). iconAnchor puts that tip on the

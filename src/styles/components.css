@@ -1214,6 +1214,25 @@ select.control {
   padding: 48px;
   display: grid;
   grid-template-columns: 1.4fr auto;
+/* Home page preview of the barangay map (MapPreview.jsx). It reuses the full
+   map's .imap frame and marker styles below; only its size and the
+   click-through into /map are its own. */
+.imap.imap-preview {
+  height: auto;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--ink-200);
+}
+.imap-preview-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+}
+/* Above the click-through, so the OpenStreetMap credit stays readable and its
+   link still works. */
+.imap-preview .leaflet-bottom {
+  z-index: 1001;
+}
+
 /* ------------------------------------------------------------
    Interactive barangay map (Leaflet), /map only.
    Prefixed imap- so none of it reaches the landing page's schematic.
