@@ -1214,6 +1214,387 @@ select.control {
   padding: 48px;
   display: grid;
   grid-template-columns: 1.4fr auto;
+/* ------------------------------------------------------------
+   Interactive barangay map (Leaflet), /map only.
+   Prefixed imap- so none of it reaches the landing page's schematic.
+   ------------------------------------------------------------ */
+.imap {
+  position: relative;
+  /* Leaflet's panes and controls use z-indexes up to 1000. Isolating them
+     keeps the whole map under the sticky site nav when the page scrolls. */
+  isolation: isolate;
+  height: clamp(380px, 64vh, 640px);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--ink-100);
+}
+.imap-canvas {
+  position: absolute;
+  inset: 0;
+}
+.imap .leaflet-container {
+  font-family: inherit;
+  background: var(--ink-100);
+}
+.imap .leaflet-popup-content {
+  font-size: 13.5px;
+  line-height: 1.45;
+  margin: 12px 16px;
+}
+.imap-popup-note {
+  margin-top: 4px;
+  color: var(--ink-500);
+}
+
+.imap-search {
+  position: absolute;
+  z-index: 1000;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(380px, calc(100% - 120px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  background: #fff;
+  border: 1.5px solid var(--ink-200);
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-overlay);
+  color: var(--ink-400);
+}
+.imap-search:focus-within {
+  border-color: var(--primary-400);
+}
+.imap-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink-800);
+}
+.imap-spin {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid var(--ink-200);
+  border-top-color: var(--primary-600);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.imap-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-overlay);
+}
+.imap-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+}
+.imap-results button:hover,
+.imap-results button:focus-visible {
+  background: var(--ink-50);
+  outline: 0;
+}
+.imap-results b {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-800);
+}
+.imap-results span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.imap-results p {
+  padding: 10px;
+  font-size: 13.5px;
+  color: var(--ink-500);
+}
+
+.imap-tools {
+  position: absolute;
+  z-index: 1000;
+  left: 12px;
+  bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.imap-tool {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  color: var(--primary-700);
+}
+.imap-tool:hover:not(:disabled) {
+  border-color: var(--primary-300);
+}
+.imap-tool:disabled,
+.imap-seg button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.imap-seg {
+  display: flex;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+}
+.imap-seg button {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-600);
+}
+.imap-seg button[aria-pressed='true'] {
+  background: var(--primary-700);
+  color: #fff;
+}
+
+.imap-go {
+  position: absolute;
+  z-index: 1000;
+  right: 12px;
+  bottom: 30px;
+  box-shadow: var(--sh-overlay);
+}
+.imap-go-mobile {
+  display: none;
+}
+.imap-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1001;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-500);
+  background: var(--ink-50);
+}
+.imap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.imap-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.imap-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+}
+.imap-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--ink-400);
+}
+.imap-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.imap-links > a:last-child {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* Markers are divIcons, so no image paths for the bundler to break. */
+.imap-marker {
+  position: relative;
+}
+/* The Ilawod logo pin: 40x50, a 36px disc on top and a 14px pointer below.
+   Its tip is the bottom-centre pixel (20, 50), which Map.jsx anchors to the
+   coordinate -- keep PIN_W / PIN_H there in step with these numbers. */
+.imap-pin {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(5, 39, 51, 0.35);
+}
+.imap-pin img {
+  position: absolute;
+  inset: 2px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.imap-pin::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border-style: solid;
+  border-width: 14px 7px 0;
+  border-color: #fff transparent transparent;
+  filter: drop-shadow(0 2px 1px rgba(5, 39, 51, 0.3));
+}
+/* Pulses on the ground point itself, under the pin's tip. */
+.imap-halo {
+  position: absolute;
+  left: 20px;
+  top: 50px;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border-radius: 50%;
+  background: rgba(206, 63, 58, 0.28);
+  pointer-events: none;
+  animation: imap-pulse 2.2s ease-out infinite;
+}
+@keyframes imap-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .imap-halo {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+.imap-dot {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(5, 39, 51, 0.35);
+  background: var(--primary-700);
+}
+.imap-dot-office {
+  background: var(--primary-700);
+}
+/* Gold, not another teal: it sits right beside the hall's marker. */
+.imap-dot-health {
+  background: var(--accent-500);
+}
+.imap-dot-evacuation {
+  background: var(--success-500);
+}
+.imap-dot-found {
+  background: var(--danger-500);
+}
+
+.imap-places {
+  display: grid;
+  gap: 8px;
+}
+.imap-place {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-md);
+}
+.imap-place:hover {
+  border-color: var(--primary-300);
+}
+.imap-place[aria-pressed='true'] {
+  border-color: var(--primary-600);
+  background: var(--primary-100);
+}
+.imap-place b {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-800);
+}
+.imap-place span {
+  font-size: 12.5px;
+  color: var(--ink-400);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .imap-card {
+    padding: 14px;
+  }
+  .imap {
+    height: clamp(340px, 62vh, 520px);
+  }
+  /* Clear of the zoom buttons at top-left. */
+  .imap-search {
+    left: 54px;
+    right: 10px;
+    width: auto;
+    transform: none;
+  }
+  .imap-tools {
+    left: 10px;
+    bottom: 26px;
+  }
+  /* The in-map button would cover the tools on a narrow screen. */
+  .imap-go {
+    display: none;
+  }
+  .imap-go-mobile {
+    display: inline-flex;
+    width: 100%;
+    justify-content: center;
+  }
+  .imap-links {
+    width: 100%;
+  }
+}
+
   gap: 32px;
   align-items: center;
   color: var(--ink-300);
