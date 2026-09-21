@@ -996,6 +996,26 @@ select.control {
   grid-template-columns: repeat(3, 1fr);
   gap: 20px;
 }
+/* My Requests: the four document types a resident can file. Four across on
+   wide screens, two on tablets and narrow laptops, one on phones. The class
+   pair outranks the plain .services rules at every width. */
+.services.req-choices {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.req-choices .svc {
+  padding: 22px;
+}
+@media (max-width: 1200px) {
+  .services.req-choices {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .services.req-choices {
+    grid-template-columns: 1fr;
+  }
+}
 .svc {
   background: #fff;
   border: 1px solid var(--ink-200);
