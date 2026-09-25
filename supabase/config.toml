@@ -14,6 +14,12 @@ project_id = "barangay-e-assist"
 # to verify. The function does its own IP-keyed lockout and audit logging.
 verify_jwt = false
 
+[functions.admin-create-user]
+# The opposite of the two below: only a signed-in caller may reach it, and the
+# function then checks that the caller's own profile is barangay staff before
+# creating anything.
+verify_jwt = true
+
 [functions.sms-dispatch]
 # Not laxer than face-login, stricter. verify_jwt would accept any resident's
 # token and then let them drain the SMS queue; this function checks a

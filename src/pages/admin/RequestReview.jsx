@@ -263,8 +263,11 @@ export default function RequestReview() {
                         <b>{REQUEST_STATUS[h.to_status]?.label ?? h.to_status}</b>
                         <span>
                           {shortDate(h.created_at)} · {timeOnly(h.created_at)}
-                          {h.profiles?.full_name
-                            ? ` · ${h.profiles.full_name}`
+                          {/* changed_by_name is the name kept on the entry
+                              itself, read when the account behind it has
+                              since been removed. */}
+                          {h.profiles?.full_name || h.changed_by_name
+                            ? ` · ${h.profiles?.full_name || h.changed_by_name}`
                             : ' · the resident'}
                         </span>
                         {h.note && <p className="note">{h.note}</p>}

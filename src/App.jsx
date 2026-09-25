@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { Icon, IconSprite } from './components/Icon'
 import { AuthProvider } from './hooks/useAuth'
-import { RedirectIfSignedIn, RequireAuth, RequireStaff } from './components/routing/Guards'
+import { RedirectIfSignedIn, RequireAuth, RequireCaptain, RequireStaff } from './components/routing/Guards'
 
 import PublicLayout from './components/layout/PublicLayout'
 import ResidentLayout from './components/layout/ResidentLayout'
@@ -39,6 +39,7 @@ import Officials from './pages/admin/Officials'
 import Reports from './pages/admin/Reports'
 import SmsLog from './pages/admin/SmsLog'
 import AdminProfile from './pages/admin/Profile'
+import Admins from './pages/admin/Admins'
 
 import ComponentSheet from './pages/dev/ComponentSheet'
 
@@ -162,6 +163,16 @@ export default function App() {
           <Route path="notifications" element={<SmsLog />} />
           <Route path="officials" element={<Officials />} />
           <Route path="reports" element={<Reports />} />
+          {/* Admin Management is the captain's alone. Every other admin
+              screen stays open to the secretary and treasurer. */}
+          <Route
+            path="admins"
+            element={
+              <RequireCaptain>
+                <Admins />
+              </RequireCaptain>
+            }
+          />
           <Route path="profile" element={<AdminProfile />} />
         </Route>
 

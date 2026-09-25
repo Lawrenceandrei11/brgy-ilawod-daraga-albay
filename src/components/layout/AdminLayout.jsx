@@ -38,13 +38,14 @@ const NAV = [
       { to: '/admin/announcements', label: 'Announcements', icon: 'mega' },
       { to: '/admin/notifications', label: 'Text messages', icon: 'bell' },
       { to: '/admin/officials', label: 'Officials', icon: 'user' },
+      { to: '/admin/admins', label: 'Admin accounts', icon: 'shield', captainOnly: true },
       { to: '/admin/reports', label: 'Reports', icon: 'brief' },
     ],
   },
 ]
 
 export default function AdminLayout() {
-  const { profile, role, signOut } = useAuth()
+  const { profile, role, isCaptain, signOut } = useAuth()
   const [drawer, setDrawer] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
@@ -83,6 +84,9 @@ export default function AdminLayout() {
           <div key={section.group ?? 'main'} style={{ display: 'contents' }}>
             {section.group && <div className="grp">{section.group}</div>}
             {section.items.map((item) => {
+              // Hiding it is the courtesy; the route guard and the Edge
+              // Function are what actually stop anyone else.
+              if (item.captainOnly && !isCaptain) return null
               const n = item.badge ? stats?.[item.badge] : null
               return (
                 <NavLink
