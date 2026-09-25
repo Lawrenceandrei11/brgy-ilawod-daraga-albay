@@ -14,6 +14,11 @@ const ROLE_LABEL = {
 }
 
 const BLANK_PASSWORD = { current: '', next: '', confirm: '' }
+const BLANK_EMAIL = { next: '', password: '' }
+
+// The same shape the Add Admin form accepts.
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
 /**
  * The Admin portal's own profile page: who you are signed in as, your name,
  * your password and your profile picture. The same page for the captain,
@@ -65,8 +70,18 @@ export default function AdminProfile() {
   const [pwError, setPwError] = useState(null)
   const [pwSaved, setPwSaved] = useState(false)
 
+  const [changingEmail, setChangingEmail] = useState(false)
+  const [emailForm, setEmailForm] = useState(BLANK_EMAIL)
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailError, setEmailError] = useState(null)
+  const [emailSaved, setEmailSaved] = useState(null)
+
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const setPwField = (k) => (e) => setPw((p) => ({ ...p, [k]: e.target.value }))
+  const setEmailField = (k) => (e) => setEmailForm((f) => ({ ...f, [k]: e.target.value }))
+
+  // Set by Supabase Auth while a change is waiting on the confirmation link.
+  const awaitingEmail = user?.new_email ?? null
 
   function startEditing() {
     setForm(splitName(profile))
@@ -175,6 +190,102 @@ export default function AdminProfile() {
     }
   }
 
+  function startChangingEmail() {
+    setEmailForm(BLANK_EMAIL)
+    setEmailError(null)
+    setEmailSaved(null)
+    setChangingEmail(true)
+  }
+
+  function cancelEmailChange() {
+    setEmailForm(BLANK_EMAIL)
+    setEmailError(null)
+    setChangingEmail(false)
+  }
+
+  /**
+   * Supabase Auth owns the email address, so this asks Auth to change it and
+   * lets Auth decide when it takes effect. Nothing here writes the address
+   * into profiles: the database follows auth.users on its own (migration 21),
+   * which is what keeps the copy honest when the confirmation link is opened
+   * an hour later in a mail app.
+   */
+  async function changeEmail(e) {
+    e.preventDefault()
+
+    const currentEmail = user?.email ?? profile?.email
+    const next = emailForm.next.trim().toLowerCase()
+
+    if (!currentEmail) return setEmailError('Your sign-in email is missing. Sign out, sign in again, and retry.')
+    if (!EMAIL.test(next)) return setEmailError('That does not look like an email address.')
+    if (next === currentEmail.toLowerCase()) return setEmailError('That is already your email address.')
+    if (!emailForm.password) return setEmailError('Enter your current password.')
+
+    setEmailBusy(true)
+    setEmailError(null)
+    setEmailSaved(null)
+    try {
+      // Auth enforces uniqueness itself, but it may answer a taken address
+      // with a silent success to avoid telling strangers who has an account.
+      // Staff can already see these addresses, so checking here turns that
+      // silence into a plain answer.
+      const { data: taken, error: lookupError } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('email', next)
+        .neq('id', profile.id)
+        .maybeSingle()
+      if (lookupError) throw lookupError
+      if (taken) return setEmailError('That email address is already used by another account.')
+
+      // The same proof of identity the password change asks for: Auth checks
+      // it against its own hash, and a wrong one stops here.
+      const { error: wrongPassword } = await supabase.auth.signInWithPassword({
+        email: currentEmail,
+        password: emailForm.password,
+      })
+      if (wrongPassword) {
+        return setEmailError(
+          /invalid login credentials/i.test(wrongPassword.message)
+            ? 'Your current password is not correct.'
+            : friendlyError(wrongPassword, 'Your current password could not be checked.')
+        )
+      }
+
+      // updateUser changes the account that made the call and no other, so
+      // another official's address cannot be reached from here.
+      const { data, error: changeError } = await supabase.auth.updateUser(
+        { email: next },
+        { emailRedirectTo: `${window.location.origin}/admin/profile` },
+      )
+      if (changeError) throw changeError
+
+      setEmailForm(BLANK_EMAIL)
+      setChangingEmail(false)
+
+      if (data?.user?.new_email) {
+        // Confirmation is on: the address moves only once the link is opened.
+        setEmailSaved(
+          `Check ${data.user.new_email} for the confirmation link. Keep signing in with ${currentEmail} until you have opened it.`
+        )
+      } else {
+        // Confirmation is off for this project, so Auth applied it at once.
+        await refetchProfile()
+        queryClient.invalidateQueries({ queryKey: ['admin-accounts'] })
+        setEmailSaved(`You now sign in with ${data?.user?.email ?? next}.`)
+      }
+    } catch (err) {
+      const message = err?.message ?? ''
+      setEmailError(
+        /already (been )?registered|already in use|already exists/i.test(message)
+          ? 'That email address is already used by another account.'
+          : friendlyError(err, 'Your email address could not be changed.')
+      )
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
   // One padding for every card body, so the two columns line up and the text
   // inside sits under the title in the header bar above it.
   const cardBody = { padding: '18px 26px 20px' }
@@ -273,10 +384,87 @@ export default function AdminProfile() {
                 </div>
 
                 <p style={{ fontSize: 12.5, color: 'var(--ink-400)', margin: '14px 0 0' }}>
-                  Your position and email address are set by the barangay, not here.
+                  Your position is set by the barangay, not here.
                 </p>
               </div>
             )}
+          </Card>
+
+          {/* The address you sign in with. Supabase Auth owns it; this asks
+              Auth to change it, and only for your own account. */}
+          <Card flush>
+            <CardHeader title="Sign-in email">
+              {!changingEmail && (
+                <Button size="s" auto variant="secondary" onClick={startChangingEmail}>
+                  Change email
+                </Button>
+              )}
+            </CardHeader>
+
+            <div style={cardBody}>
+              {awaitingEmail && (
+                <Notice icon="clock" title="Waiting for confirmation">
+                  A confirmation link was sent to {awaitingEmail}. Your sign-in email changes once
+                  it is opened.
+                </Notice>
+              )}
+              {emailSaved && (
+                <Notice icon="check" title="Email change requested">
+                  {emailSaved}
+                </Notice>
+              )}
+              {emailError && (
+                <Notice tone="danger" icon="alert" title="Could not change your email">
+                  {emailError}
+                </Notice>
+              )}
+
+              {changingEmail ? (
+                <form onSubmit={changeEmail}>
+                  <div className="grid-2" style={{ gap: 16 }}>
+                    <Field
+                      label="New email address"
+                      required
+                      type="email"
+                      autoComplete="off"
+                      help="You will sign in with this."
+                      value={emailForm.next}
+                      onChange={setEmailField('next')}
+                    />
+                    <Field
+                      label="Current password"
+                      required
+                      type="password"
+                      autoComplete="current-password"
+                      help="To prove the account is yours."
+                      value={emailForm.password}
+                      onChange={setEmailField('password')}
+                    />
+                  </div>
+
+                  <div style={formActions}>
+                    <Button type="submit" size="s" auto icon="check" disabled={emailBusy}>
+                      {emailBusy ? 'Changing…' : 'Change email'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="s"
+                      auto
+                      variant="ghost"
+                      onClick={cancelEmailChange}
+                      disabled={emailBusy}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <p style={{ fontSize: 12.5, color: 'var(--ink-400)', margin: 0 }}>
+                  You change your own sign-in email here, and only your own. It is the address you
+                  sign in with, so the barangay should still be able to reach you on it.
+                </p>
+              )}
+            </div>
           </Card>
 
           {/* Your own password, whichever of the three positions you hold. */}
