@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { supabase, friendlyError } from '../../lib/supabase'
@@ -42,6 +42,77 @@ export default function AnonymousInbox() {
   })
 
   const rows = (data ?? []).filter((m) => (filter === 'all' ? true : m.status === filter))
+
+  // ---- clearing out closed messages -----------------------------------
+  //
+  // Only under the Closed filter. Anything still live is correspondence, and
+  // delete_closed_anonymous_messages() refuses it regardless of what this
+  // page sends.
+  const clearable = filter === 'closed'
+  const [picked, setPicked] = useState([])
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
+  const [deleted, setDeleted] = useState(null)
+
+  // Changing filter must not leave stale ids selected: they would be sent to
+  // the server on the next click.
+  useEffect(() => {
+    setPicked([])
+    setDeleteError(null)
+  }, [filter])
+
+  const shownIds = rows.map((m) => m.id)
+  const selected = picked.filter((id) => shownIds.includes(id))
+  const allShownPicked = shownIds.length > 0 && selected.length === shownIds.length
+  const somePicked = selected.length > 0 && !allShownPicked
+
+  // "Some of them" is a property of the element, not an attribute React can
+  // render, so it is set on the node itself.
+  const selectAllRef = useRef(null)
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = somePicked
+  }, [somePicked])
+
+  const toggleOne = (id) =>
+    setPicked((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]))
+  const toggleAll = () => setPicked(allShownPicked ? [] : shownIds)
+
+  async function removeSelected() {
+    if (selected.length === 0) return
+    const warning =
+      `Permanently delete ${selected.length} closed ${selected.length === 1 ? 'message' : 'messages'}?\n\n` +
+      'These records are removed from the database for good and cannot be recovered.\n\n' +
+      'Unread, being looked at and acted on messages are not affected.'
+    if (!window.confirm(warning)) return
+
+    setDeleting(true)
+    setDeleteError(null)
+    setDeleted(null)
+    try {
+      const { data: count, error } = await supabase.rpc('delete_closed_anonymous_messages', {
+        p_ids: selected,
+      })
+      if (error) throw error
+
+      queryClient.invalidateQueries({ queryKey: ['admin-anonymous'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+      setPicked([])
+      setOpen(null)
+
+      // The database says how many it actually removed. Fewer than asked for
+      // means something changed underneath -- someone reopened a message, or
+      // another member of staff got there first.
+      setDeleted(
+        count === selected.length
+          ? `${count} closed ${count === 1 ? 'message has' : 'messages have'} been permanently deleted.`
+          : `${count} of ${selected.length} selected messages were deleted. The rest are no longer closed, so they were left alone.`
+      )
+    } catch (err) {
+      setDeleteError(friendlyError(err, 'Those messages could not be deleted. Nothing was removed.'))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   async function setStatus(msg, status) {
     setBusy(msg.id)
@@ -92,8 +163,60 @@ export default function AnonymousInbox() {
         )}
       </div>
 
+      {deleted && (
+        <Notice icon="check" title="Messages deleted">
+          {deleted}
+        </Notice>
+      )}
+      {deleteError && (
+        <Notice tone="danger" icon="alert" title="Could not delete">
+          {deleteError}
+        </Notice>
+      )}
+
       <Card flush>
-        <CardHeader title={`${rows.length} message${rows.length === 1 ? '' : 's'}`} />
+        <CardHeader title={`${rows.length} message${rows.length === 1 ? '' : 's'}`}>
+          {clearable && rows.length > 0 && (
+            <div className="row" style={{ gap: 14, flexWrap: 'wrap' }}>
+              {/* The label makes the whole "Select All" clickable, and says
+                  out loud what a bare checkbox only implies. */}
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 13.5,
+                  color: 'var(--ink-600)',
+                  cursor: deleting ? 'default' : 'pointer',
+                }}
+              >
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allShownPicked}
+                  onChange={toggleAll}
+                  disabled={deleting}
+                />
+                Select All
+              </label>
+
+              <span style={{ fontSize: 13, color: 'var(--ink-500)' }}>
+                {selected.length > 0 ? `${selected.length} selected` : 'None selected'}
+              </span>
+
+              <Button
+                size="s"
+                auto
+                variant="ghost"
+                style={{ color: 'var(--danger-600)' }}
+                disabled={selected.length === 0 || deleting}
+                onClick={removeSelected}
+              >
+                {deleting ? 'Deleting…' : 'Delete selected'}
+              </Button>
+            </div>
+          )}
+        </CardHeader>
         {isLoading ? (
           <LoadingRows rows={4} />
         ) : rows.length === 0 ? (
@@ -106,6 +229,27 @@ export default function AnonymousInbox() {
               const expanded = open === m.id
               return (
                 <div key={m.id} style={{ borderBottom: '1px solid var(--ink-100)' }}>
+                  {/* The checkbox sits beside the row's button rather than
+                      inside it: one control cannot live within another, and a
+                      tick should not also expand the message. */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                    {clearable && (
+                      <label
+                        style={{
+                          padding: '22px 0 0 26px',
+                          cursor: deleting ? 'default' : 'pointer',
+                          display: 'inline-flex',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={`Select message ${m.ref_code}`}
+                          checked={picked.includes(m.id)}
+                          onChange={() => toggleOne(m.id)}
+                          disabled={deleting}
+                        />
+                      </label>
+                    )}
                   <button
                     onClick={() => setOpen(expanded ? null : m.id)}
                     style={{ width: '100%', textAlign: 'left', padding: '18px 26px', display: 'flex', gap: 14, alignItems: 'flex-start' }}
@@ -132,6 +276,7 @@ export default function AnonymousInbox() {
                     </div>
                     <span style={{ color: 'var(--ink-400)', fontSize: 13 }}>{expanded ? 'Close' : 'Read'}</span>
                   </button>
+                  </div>
 
                   {expanded && (
                     <div style={{ padding: '0 26px 22px' }}>
