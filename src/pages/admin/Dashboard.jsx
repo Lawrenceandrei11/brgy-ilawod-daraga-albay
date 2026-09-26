@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { Badge, Button, Card, CardHeader } from '../../components/ui'
+import { Badge, Button, Card, CardHeader, PngSlot } from '../../components/ui'
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { Icon } from '../../components/Icon'
 import { firstName, peso, shortDate, timeOnly } from '../../lib/formatters'
@@ -250,13 +250,23 @@ export default function AdminDashboard() {
   )
 }
 
+/**
+ * The barangay seal in the greeting band.
+ *
+ * This was hand-rolled markup that copied PngSlot's classes but not its
+ * behaviour: nothing ever loaded the file, so the slot sat empty with its
+ * filename showing. PngSlot is what every other screen uses, and it puts the
+ * real artwork in the same box at the same size.
+ */
 function PngSeal() {
   return (
-    <div
-      className="av pill quiet on-dark-slot"
-      data-png="barangay-logo.png"
+    <PngSlot
+      name="barangay-logo.png"
+      className="av"
+      pill
+      quiet
+      onDark
       style={{ width: 76, height: 76, flex: 'none' }}
-      aria-hidden="true"
     />
   )
 }

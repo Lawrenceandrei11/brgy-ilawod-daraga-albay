@@ -104,7 +104,10 @@ export default function Dashboard() {
                   }.`}
           </p>
         </div>
-        <MyAvatar name="resident-placeholder.png" className="av" pill quiet onDark />
+        {/* caption={false}: a resident who has not set a picture should see a
+            blank avatar, the way the Admin portal shows one, rather than the
+            filename of artwork that was never drawn. */}
+        <MyAvatar name="resident-placeholder.png" caption={false} className="av" pill quiet onDark />
       </div>
 
       <div className="stats">

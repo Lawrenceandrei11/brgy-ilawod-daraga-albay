@@ -121,7 +121,10 @@ export default function ResidentLayout() {
           </button>
 
           <div className="who">
-            <MyAvatar name="resident-placeholder.png" className="av" pill quiet />
+            {/* caption={false}: with no picture set this is a blank avatar,
+                as it is in the Admin portal's top bar, not the filename of
+                artwork that was never drawn. */}
+            <MyAvatar name="resident-placeholder.png" caption={false} className="av" pill quiet />
             <div>
               <b>{shortName(profile?.full_name) || 'Resident'}</b>
               <span>
