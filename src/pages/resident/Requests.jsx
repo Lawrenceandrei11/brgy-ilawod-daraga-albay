@@ -71,16 +71,11 @@ export default function Requests() {
 
   return (
     <div className="dash-body">
-      <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
-        <div className="grow">
-          <span className="eyebrow">My requests</span>
-          <h1 style={{ fontSize: 27, margin: '8px 0 0' }}>Everything you have filed</h1>
-        </div>
-        {isApproved && (
-          <Button href="#choose-request" size="m" auto icon="doc">
-            New request
-          </Button>
-        )}
+      {/* No "New request" button here: it only jumped to the cards below,
+          which offer the same thing with the document already chosen. */}
+      <div>
+        <span className="eyebrow">My requests</span>
+        <h1 style={{ fontSize: 27, margin: '8px 0 0' }}>Everything you have filed</h1>
       </div>
 
       {/* Each card opens the existing request form for that document, which
