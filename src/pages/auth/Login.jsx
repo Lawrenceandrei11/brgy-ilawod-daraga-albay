@@ -5,7 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
 import { supabase, friendlyError } from '../../lib/supabase'
-import { Button, Field, Notice, PngSlot } from '../../components/ui'
+import { Button, Field, Notice } from '../../components/ui'
+import { MainLogo } from '../../components/MainLogo'
 import { Icon } from '../../components/Icon'
 
 const schema = z.object({
@@ -71,7 +72,7 @@ export default function Login() {
     <div className="auth">
       <div className="auth-left">
         <Link to="/" className="lockup">
-          <PngSlot name="barangay-logo.png" className="seal" pill quiet onDark />
+          <MainLogo className="seal" pill quiet onDark />
           <div>
             <b>BARANGAY E-ASSIST</b>
             <span>Barangay Ilawod</span>

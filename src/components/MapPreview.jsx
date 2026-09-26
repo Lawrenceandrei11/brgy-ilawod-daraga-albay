@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { HOME_ZOOM, PLACES, TILES, placeIcon } from '../pages/public/Map'
+import { useMainLogo } from '../lib/branding'
 
 /**
  * A small, still preview of the Barangay Map for the home page.
@@ -16,6 +17,7 @@ import { HOME_ZOOM, PLACES, TILES, placeIcon } from '../pages/public/Map'
  * screen, so a visitor who never scrolls this far downloads none of it.
  */
 export function MapPreview() {
+  const logo = useMainLogo()
   const boxRef = useRef(null)
   const containerRef = useRef(null)
   const [near, setNear] = useState(false)
@@ -83,7 +85,7 @@ export function MapPreview() {
 
         for (const place of pinned) {
           L.marker(place.position, {
-            icon: placeIcon(L, place),
+            icon: placeIcon(L, place, logo.url),
             interactive: false,
             keyboard: false,
             zIndexOffset: place.key === 'ilawod' ? -1000 : 0,

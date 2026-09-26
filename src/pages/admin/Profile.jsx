@@ -5,6 +5,7 @@ import { supabase, friendlyError } from '../../lib/supabase'
 import { MIN_PASSWORD } from '../../lib/password'
 import { Button, Card, CardHeader, Field, Notice } from '../../components/ui'
 import { ProfilePictureCard } from '../../components/ProfilePictureCard'
+import { MainLogoCard } from '../../components/MainLogoCard'
 import { useAuth } from '../../hooks/useAuth'
 
 const ROLE_LABEL = {
@@ -548,6 +549,9 @@ export default function AdminProfile() {
         </div>
 
         <ProfilePictureCard placeholder="official-placeholder.png" />
+
+        {/* Renders for the captain only; the database enforces the same. */}
+        <MainLogoCard />
       </div>
     </div>
   )

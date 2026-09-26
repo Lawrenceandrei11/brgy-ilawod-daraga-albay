@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Icon } from '../Icon'
-import { Button, PngSlot } from '../ui'
+import { Button } from '../ui'
+import { MainLogo } from '../MainLogo'
 import { useAuth } from '../../hooks/useAuth'
 
 const LINKS = [
@@ -26,7 +27,7 @@ export function PublicNav() {
     <>
       <nav className="site-nav">
         <Link to="/" className="lockup" onClick={close}>
-          <PngSlot name="barangay-logo.png" className="seal" pill quiet alt="Barangay Ilawod seal" />
+          <MainLogo className="seal" pill quiet alt="" />
           <div>
             <b>BARANGAY E-ASSIST</b>
             <span>Barangay Ilawod</span>
@@ -99,7 +100,7 @@ export function SiteFooter() {
       <div className="cols">
         <div>
           <div className="lockup" style={{ marginBottom: 16 }}>
-            <PngSlot name="barangay-logo.png" className="seal" pill quiet onDark />
+            <MainLogo className="seal" pill quiet onDark />
             <div>
               <b style={{ color: '#fff' }}>BARANGAY E-ASSIST</b>
               <span style={{ color: 'var(--ink-400)' }}>Barangay Ilawod</span>

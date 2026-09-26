@@ -9,6 +9,7 @@ import { FaceScanner, AngleStrip } from '../../components/biometric/FaceScanner'
 import { Badge, Button, Card, Check, Notice, PngSlot, Stepper } from '../../components/ui'
 import { Icon } from '../../components/Icon'
 import { shortDate } from '../../lib/formatters'
+import { MainLogo } from '../../components/MainLogo'
 
 const STEPS = ['Consent', 'Position', 'Capture', 'Done']
 
@@ -189,7 +190,7 @@ export default function Enroll() {
     <div className="auth">
       <div className="auth-left">
         <Link to="/app" className="lockup">
-          <PngSlot name="barangay-logo.png" className="seal" pill quiet onDark />
+          <MainLogo className="seal" pill quiet onDark />
           <div>
             <b>BARANGAY E-ASSIST</b>
             <span>Facial biometric enrollment</span>

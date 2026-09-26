@@ -8,6 +8,7 @@ import { supabase, friendlyError } from '../../lib/supabase'
 import { Button, Card, Check, Field, Notice, PngSlot, Stepper } from '../../components/ui'
 import { Icon } from '../../components/Icon'
 import { longDate } from '../../lib/formatters'
+import { MainLogo } from '../../components/MainLogo'
 
 const STEPS = ['Personal details', 'Household & address', 'Review & submit']
 
@@ -80,7 +81,7 @@ export default function Register() {
     <>
       <nav className="site-nav">
         <Link to="/" className="lockup">
-          <PngSlot name="barangay-logo.png" className="seal" pill quiet />
+          <MainLogo className="seal" pill quiet />
           <div>
             <b>BARANGAY E-ASSIST</b>
             <span>Resident registration</span>

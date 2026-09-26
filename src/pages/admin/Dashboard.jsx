@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { Badge, Button, Card, CardHeader, PngSlot } from '../../components/ui'
+import { Badge, Button, Card, CardHeader } from '../../components/ui'
+import { MainLogo } from '../../components/MainLogo'
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { Icon } from '../../components/Icon'
 import { firstName, peso, shortDate, timeOnly } from '../../lib/formatters'
@@ -260,8 +261,7 @@ export default function AdminDashboard() {
  */
 function PngSeal() {
   return (
-    <PngSlot
-      name="barangay-logo.png"
+    <MainLogo
       className="av"
       pill
       quiet

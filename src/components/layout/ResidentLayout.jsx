@@ -5,7 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon } from '../Icon'
 import { MyAvatar } from '../MyAvatar'
 import { GlobalSearch } from '../GlobalSearch'
-import { Button, PngSlot } from '../ui'
+import { Button } from '../ui'
+import { MainLogo } from '../MainLogo'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { shortName } from '../../lib/formatters'
@@ -61,7 +62,7 @@ export default function ResidentLayout() {
 
       <aside className={`side ${drawer ? 'open' : ''}`.trim()}>
         <Link to="/" className="lockup">
-          <PngSlot name="barangay-logo.png" className="seal" pill quiet onDark />
+          <MainLogo className="seal" pill quiet onDark />
           <div>
             <b>BARANGAY E-ASSIST</b>
             <span>Barangay Ilawod</span>

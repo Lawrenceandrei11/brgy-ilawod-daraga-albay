@@ -6,6 +6,7 @@ import { useFaceApi, descriptorDistance } from '../../components/biometric/useFa
 import { FaceScanner } from '../../components/biometric/FaceScanner'
 import { Badge, Button, Card, Notice, PngSlot } from '../../components/ui'
 import { Icon } from '../../components/Icon'
+import { MainLogo } from '../../components/MainLogo'
 
 /**
  * Face sign-in.
@@ -188,7 +189,7 @@ export default function FaceLogin() {
     <div className="auth">
       <div className="auth-left">
         <Link to="/" className="lockup">
-          <PngSlot name="barangay-logo.png" className="seal" pill quiet onDark />
+          <MainLogo className="seal" pill quiet onDark />
           <div>
             <b>BARANGAY E-ASSIST</b>
             <span>Barangay Ilawod</span>

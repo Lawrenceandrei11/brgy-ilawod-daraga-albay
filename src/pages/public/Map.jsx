@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { supabase } from '../../lib/supabase'
+import { useMainLogo } from '../../lib/branding'
 import { Button, Card, Notice } from '../../components/ui'
 import { Icon } from '../../components/Icon'
 
@@ -163,8 +164,10 @@ function popupContent(title, text) {
 const PIN_W = 40
 const PIN_H = 50
 
-// Only compile-time constants go into these HTML strings.
-export function placeIcon(L, place) {
+// Only compile-time constants go into these HTML strings, with one exception:
+// the logo's address, which is quote-escaped below before it is written into
+// the img tag.
+export function placeIcon(L, place, logoUrl) {
   if (place.key === 'ilawod') {
     // A 40x50 pin: the logo disc on top, a pointer below whose tip is the
     // bottom-centre pixel (20, 50). iconAnchor puts that tip on the
@@ -172,7 +175,10 @@ export function placeIcon(L, place) {
     // numbers are the icon's own geometry (see .imap-pin), not a screen offset.
     return L.divIcon({
       className: 'imap-marker imap-marker-pin',
-      html: '<span class="imap-halo"></span><span class="imap-pin"><img src="/assets/barangay-logo.png" alt=""></span>',
+      html:
+        '<span class="imap-halo"></span><span class="imap-pin"><img src="' +
+        String(logoUrl || '/assets/barangay-logo.png').replace(/"/g, '&quot;') +
+        '" alt=""></span>',
       iconSize: [PIN_W, PIN_H],
       iconAnchor: [PIN_W / 2, PIN_H],
       popupAnchor: [0, -PIN_H],
@@ -202,6 +208,8 @@ function foundIcon(L) {
 }
 
 export default function BarangayMap() {
+  // The logo as known when the map is built; a change shows on next load.
+  const logo = useMainLogo()
   const [active, setActive] = useState(PLACES[0])
   const [view, setView] = useState('map')
   const [ready, setReady] = useState(false)
@@ -270,7 +278,7 @@ export default function BarangayMap() {
           if (!place.position) continue
           const isPin = place.key === 'ilawod'
           markers[place.key] = L.marker(place.position, {
-            icon: placeIcon(L, place),
+            icon: placeIcon(L, place, logo.url),
             title: place.label,
             // Beneath the dots, so its halo never covers them or their clicks.
             zIndexOffset: isPin ? -1000 : 0,
