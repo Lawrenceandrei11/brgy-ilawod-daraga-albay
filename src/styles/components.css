@@ -2009,6 +2009,55 @@ select.control {
   width: 100%;
   color: var(--ink-800);
 }
+/* Live results, dropped under the topbar search as you type. */
+.search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  min-width: 320px;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-overlay);
+  padding: 6px;
+  z-index: 40;
+}
+.search-group {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+  padding: 10px 10px 4px;
+}
+.search-item {
+  display: block;
+  padding: 9px 10px;
+  border-radius: var(--r-md);
+  color: var(--ink-800);
+}
+.search-item:hover,
+.search-item:focus-visible {
+  background: var(--ink-50);
+  outline: 0;
+}
+.search-item b {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+.search-item span {
+  font-size: 12.5px;
+  color: var(--ink-400);
+}
+.search-empty {
+  padding: 14px 10px;
+  font-size: 14px;
+  color: var(--ink-500);
+}
 .icon-btn {
   width: 44px;
   height: 44px;

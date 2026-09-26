@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useQuery } from '@tanstack/react-query'
 
 import { Icon } from '../Icon'
+import { GlobalSearch } from '../GlobalSearch'
 import { MyAvatar } from '../MyAvatar'
 import { Button, PngSlot } from '../ui'
 import { useAuth } from '../../hooks/useAuth'
@@ -123,10 +124,7 @@ export default function AdminLayout() {
             <Icon name="menu" />
           </button>
 
-          <div className="search">
-            <Icon name="search" />
-            <input placeholder="Search by reference number or resident name" />
-          </div>
+          <GlobalSearch scope="admin" placeholder="Search reference numbers, residents, notices" />
 
           {/* The Admin portal has no profile menu item; your own name is the way in. */}
           <Link to="/admin/profile" className="who" title="My profile">

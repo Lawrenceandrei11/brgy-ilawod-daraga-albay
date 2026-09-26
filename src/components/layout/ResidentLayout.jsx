@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { Icon } from '../Icon'
 import { MyAvatar } from '../MyAvatar'
+import { GlobalSearch } from '../GlobalSearch'
 import { Button, PngSlot } from '../ui'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
@@ -111,10 +112,7 @@ export default function ResidentLayout() {
             <Icon name="menu" />
           </button>
 
-          <div className="search">
-            <Icon name="search" />
-            <input placeholder="Search requests, reference numbers, announcements" />
-          </div>
+          <GlobalSearch scope="resident" placeholder="Search requests, reference numbers, announcements" />
 
           <button className="icon-btn" aria-label="Notifications">
             <Icon name="bell" />
