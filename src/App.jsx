@@ -18,8 +18,12 @@ import RequestDetail from './pages/resident/RequestDetail'
 import Blotter from './pages/resident/Blotter'
 import Appointments from './pages/resident/Appointments'
 import ProfilePage from './pages/resident/Profile'
+import ResidentAnonymous from './pages/resident/Anonymous'
+import {
+  ResidentAnnouncementList,
+  ResidentAnnouncementDetail,
+} from './pages/resident/Announcements'
 import Anonymous from './pages/public/Anonymous'
-import Track from './pages/public/Track'
 import Landing from './pages/public/Landing'
 import Services from './pages/public/Services'
 import { AnnouncementList, AnnouncementDetail } from './pages/public/Announcements'
@@ -82,7 +86,6 @@ export default function App() {
           <Route path="/services" element={<Services />} />
           <Route path="/announcements" element={<AnnouncementList />} />
           <Route path="/announcements/:id" element={<AnnouncementDetail />} />
-          <Route path="/track" element={<Track />} />
           <Route path="/map" element={<BarangayMap />} />
           <Route path="/anonymous" element={<Anonymous />} />
           <Route path="/privacy" element={<Privacy />} />
@@ -130,6 +133,12 @@ export default function App() {
           <Route path="requests/new/:code" element={<NewRequest />} />
           <Route path="requests/:ref" element={<RequestDetail />} />
           <Route path="blotter" element={<Blotter />} />
+          {/* The same anonymous form as /anonymous, inside the portal frame,
+              so a signed-in resident keeps their sidebar and top bar. */}
+          <Route path="anonymous" element={<ResidentAnonymous />} />
+          {/* The same notices as /announcements, inside the portal frame. */}
+          <Route path="announcements" element={<ResidentAnnouncementList />} />
+          <Route path="announcements/:id" element={<ResidentAnnouncementDetail />} />
           <Route path="appointments" element={<Appointments />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route

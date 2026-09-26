@@ -6,16 +6,19 @@ import { Icon } from '../Icon'
 import { GlobalSearch } from '../GlobalSearch'
 import { MyAvatar } from '../MyAvatar'
 import { Button } from '../ui'
-import { MainLogo } from '../MainLogo'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { shortName } from '../../lib/formatters'
+import { MainLogo } from '../MainLogo'
 
 const ROLE_LABEL = {
   captain: 'Punong Barangay',
   secretary: 'Barangay Secretary',
   treasurer: 'Barangay Treasurer',
 }
+
+// One line of the wordmark: its own line, in the wordmark's own type.
+const NAME_LINE = { display: 'block', fontSize: 'inherit', color: 'inherit' }
 
 const NAV = [
   {
@@ -43,6 +46,13 @@ const NAV = [
       { to: '/admin/admins', label: 'Admin accounts', icon: 'shield', captainOnly: true },
       { to: '/admin/reports', label: 'Reports', icon: 'brief' },
     ],
+  },
+  {
+    // Your own account, as the resident sidebar ends with. Reachable from the
+    // top bar already; this is the way in for anyone who looks for it in the
+    // navigation instead. No captainOnly flag: every official has a profile.
+    group: 'Account',
+    items: [{ to: '/admin/profile', label: 'My profile', icon: 'user' }],
   },
 ]
 
@@ -77,7 +87,21 @@ export default function AdminLayout() {
         <Link to="/" className="lockup">
           <MainLogo className="seal" pill quiet onDark />
           <div>
-            <b>BARANGAY E-ASSIST</b>
+            {/* Two deliberate lines rather than whatever the available width
+                decides. A hyphen is a line-break opportunity, so left to
+                itself the name splits as "BARANGAY E-" / "ASSIST" as soon as
+                the font renders wider than expected -- a fallback face, a
+                zoomed page, a longer sidebar label. Each word gets its own
+                line, and E-ASSIST is held together so the hyphen can never
+                break it. No fixed widths, so it stacks the same at any size. */}
+            {/* fontSize and color are inherited back on purpose: .lockup span
+                styles the "Staff portal" line beneath, and it matches any
+                span in here, so without these the name would render in the
+                subtitle's small grey type. */}
+            <b>
+              <span style={NAME_LINE}>BARANGAY</span>
+              <span style={{ ...NAME_LINE, whiteSpace: 'nowrap' }}>E-ASSIST</span>
+            </b>
             <span>Staff portal</span>
           </div>
         </Link>

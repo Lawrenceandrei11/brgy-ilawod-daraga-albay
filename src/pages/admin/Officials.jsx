@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { supabase, friendlyError } from '../../lib/supabase'
-import { Button, Card, CardHeader, Field, Notice, PngSlot } from '../../components/ui'
+import { Button, Card, CardHeader, Field, Notice, PhotoPicker, PngSlot } from '../../components/ui'
+import { publicPhotoUrl, removePhoto, uploadPhoto } from '../../lib/storage'
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 
 const BLANK = { name: '', position: '', term_start: '', term_end: '', sort_order: 0, active: true }
@@ -13,6 +14,8 @@ export default function Officials() {
   const [form, setForm] = useState(BLANK)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  // A chosen replacement photo, not yet uploaded. Null keeps the current one.
+  const [photo, setPhoto] = useState(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-officials'],
@@ -25,6 +28,7 @@ export default function Officials() {
 
   function startNew() {
     setForm({ ...BLANK, sort_order: (data?.length ?? 0) + 1 })
+    setPhoto(null)
     setEditing('new')
   }
 
@@ -37,6 +41,7 @@ export default function Officials() {
       sort_order: o.sort_order,
       active: o.active,
     })
+    setPhoto(null)
     setEditing(o)
   }
 
@@ -47,7 +52,12 @@ export default function Officials() {
     }
     setBusy(true)
     setError(null)
+    // Uploaded first so the row can point at it, and removed again if the row
+    // cannot be saved -- the official then keeps the photo they had.
+    let uploaded = null
     try {
+      if (photo) uploaded = await uploadPhoto(photo, 'officials')
+
       const payload = {
         name: form.name.trim(),
         position: form.position.trim(),
@@ -56,16 +66,23 @@ export default function Officials() {
         sort_order: Number(form.sort_order) || 0,
         active: !!form.active,
       }
+      if (uploaded) payload.photo_path = uploaded
+
       const { error: writeError } =
         editing === 'new'
           ? await supabase.from('officials').insert(payload)
           : await supabase.from('officials').update(payload).eq('id', editing.id)
       if (writeError) throw writeError
 
+      // Only now is the old photo unused.
+      if (uploaded && editing !== 'new') removePhoto(editing.photo_path)
+
       setEditing(null)
+      setPhoto(null)
       queryClient.invalidateQueries({ queryKey: ['admin-officials'] })
       queryClient.invalidateQueries({ queryKey: ['officials'] })
     } catch (err) {
+      if (uploaded) removePhoto(uploaded)
       setError(friendlyError(err, 'Could not save that official.'))
     } finally {
       setBusy(false)
@@ -123,6 +140,15 @@ export default function Officials() {
               placeholder="Punong Barangay"
               help="As it should appear publicly"
             />
+            <PhotoPicker
+              label="Photo"
+              currentPath={editing === 'new' ? null : editing.photo_path}
+              file={photo}
+              onChange={setPhoto}
+              placeholder="official-placeholder.png"
+              round
+              caption={false}
+            />
             <div className="grid-2" style={{ gap: 18 }}>
               <Field label="Term start" type="date" value={form.term_start} onChange={set('term_start')} hint="optional" />
               <Field label="Term end" type="date" value={form.term_end} onChange={set('term_end')} hint="optional" />
@@ -147,7 +173,14 @@ export default function Officials() {
             <Button auto icon="check" disabled={busy} onClick={save}>
               {busy ? 'Saving…' : 'Save'}
             </Button>
-            <Button auto variant="ghost" onClick={() => setEditing(null)}>
+            <Button
+              auto
+              variant="ghost"
+              onClick={() => {
+                setEditing(null)
+                setPhoto(null)
+              }}
+            >
               Cancel
             </Button>
           </div>
@@ -161,7 +194,14 @@ export default function Officials() {
             <div className="feed">
               {data.map((o) => (
                 <div className="feed-item" key={o.id} style={{ alignItems: 'center' }}>
-                  <PngSlot name="official-placeholder.png" className="thumb" pill style={{ width: 52, height: 52 }} />
+                  <PngSlot
+                    name="official-placeholder.png"
+                    src={publicPhotoUrl(o.photo_path)}
+                    caption={false}
+                    className="thumb"
+                    pill
+                    style={{ width: 52, height: 52 }}
+                  />
                   <div className="grow">
                     <b>{o.name}</b>
                     <span>

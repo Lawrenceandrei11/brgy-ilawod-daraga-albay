@@ -5,7 +5,9 @@ import { supabase } from '../../lib/supabase'
 import { Button, Card, PngSlot } from '../../components/ui'
 import { Icon } from '../../components/Icon'
 import { longDate, pesoShort, turnaround } from '../../lib/formatters'
+import { publicPhotoUrl } from '../../lib/storage'
 import { MapPreview } from '../../components/MapPreview'
+import { OfficialsCarousel } from '../../components/OfficialsCarousel'
 import { LEGEND as MAP_LEGEND } from './Map'
 
 /**
@@ -34,7 +36,7 @@ export default function Landing() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('announcements')
-        .select('id, title, excerpt, category, published_at')
+        .select('id, title, excerpt, category, published_at, cover_path')
         .not('published_at', 'is', null)
         .order('published_at', { ascending: false })
         .limit(3)
@@ -55,23 +57,23 @@ export default function Landing() {
   return (
     <>
       {/* ---------------- hero ---------------- */}
-      <header className="hero on-dark">
+      <header className="hero on-dark" id="home">
         <div className="hero-in">
           <div>
-            <span className="eyebrow-pill">Republic of the Philippines · Barangay Ilawod</span>
+            <span className="eyebrow-pill">Barangay E-Assist · Barangay Ilawod, Daraga, Albay</span>
             <h1>
               Barangay services,
               <br />
               settled by <em>your face</em>.
             </h1>
             <p className="lede">
-              Request clearances, file a blotter report, book an appointment or send an anonymous
-              concern — signed in by facial verification, so there is no password to lose and no
-              queue to stand in.
+              Barangay E-Assist is Barangay Ilawod's online service desk. Request clearances and
+              certificates, file a blotter report, book an appointment or send an anonymous concern
+              — signed in by facial verification, with no password to lose and no queue to stand in.
             </p>
             <div className="ctas">
               <Button to="/login/face" icon="scan">
-                Scan my face to sign in
+                Scan to sign in
               </Button>
               <Button to="/register" variant="onDark">
                 Register as a resident
@@ -97,7 +99,7 @@ export default function Landing() {
       </header>
 
       {/* ---------------- services ---------------- */}
-      <section className="section">
+      <section className="section" id="services">
         <div className="section-head">
           <span className="eyebrow">Barangay services</span>
           <h2>Six services, one verified identity</h2>
@@ -145,7 +147,7 @@ export default function Landing() {
       <section className="section" style={{ paddingTop: 0 }}>
         <div className="section-head">
           <span className="eyebrow">How it works</span>
-          <h2>Enrol once, then just look at the camera</h2>
+          <h2>Enroll once, then just look at the camera</h2>
         </div>
         <div className="steps">
           <div className="step">
@@ -158,7 +160,7 @@ export default function Landing() {
           </div>
           <div className="step">
             <div className="num">STEP 02</div>
-            <h3>Enrol your face</h3>
+            <h3>Enroll your face</h3>
             <p>
               Three quick captures build a mathematical template. The photographs are discarded —
               only the template is kept, and it is not a picture of you.
@@ -176,7 +178,7 @@ export default function Landing() {
       </section>
 
       {/* ---------------- announcements ---------------- */}
-      <section className="section" style={{ paddingTop: 0 }}>
+      <section className="section" style={{ paddingTop: 0 }} id="announcements">
         <div className="section-head">
           <span className="eyebrow">Announcements</span>
           <h2>What's happening in Ilawod</h2>
@@ -184,7 +186,7 @@ export default function Landing() {
         <div className="ann-grid">
           {(announcements ?? []).map((a) => (
             <article className="ann" key={a.id}>
-              <PngSlot name="announcement-placeholder.png" className="cover" />
+              <PngSlot name="announcement-placeholder.png" src={publicPhotoUrl(a.cover_path)} className="cover" />
               <div className="body">
                 <span className="date">{longDate(a.published_at)}</span>
                 <h3>{a.title}</h3>
@@ -204,25 +206,17 @@ export default function Landing() {
       </section>
 
       {/* ---------------- officials ---------------- */}
-      <section className="section" style={{ paddingTop: 0 }}>
+      <section className="section" style={{ paddingTop: 0 }} id="officials">
         <div className="section-head">
           <span className="eyebrow">Your barangay council</span>
           <h2>Who you are dealing with</h2>
           <p>Every request is handled by a named official, and you can see who has it.</p>
         </div>
-        <div className="officials">
-          {(officials ?? []).map((o) => (
-            <div className="off" key={o.id}>
-              <PngSlot name="official-placeholder.png" className="av" pill quiet />
-              <b>{o.position}</b>
-              <span>{o.name}</span>
-            </div>
-          ))}
-        </div>
+        <OfficialsCarousel officials={officials ?? []} />
       </section>
 
       {/* ---------------- map ---------------- */}
-      <section className="section" style={{ paddingTop: 0 }}>
+      <section className="section" style={{ paddingTop: 0 }} id="map">
         <div className="map-band">
           <div>
             <span className="eyebrow">Barangay map</span>
@@ -252,7 +246,7 @@ export default function Landing() {
           <div>
             <h2>Not enrolled yet?</h2>
             <p style={{ fontSize: 16 }}>
-              Registration takes about five minutes, and you can enrol your face at the barangay
+              Registration takes about five minutes, and you can enroll your face at the barangay
               hall or from your own phone.
             </p>
           </div>
@@ -261,7 +255,7 @@ export default function Landing() {
               Register as a resident
             </Button>
             <Button to="/login/face" variant="onDark">
-              Enrol my face
+              Enroll my face
             </Button>
           </div>
         </div>

@@ -271,7 +271,7 @@ export default function Profile() {
 
                 <div className="stack" style={{ gap: 10 }}>
                   <Button to="/app/enroll" size="s" variant="secondary" block icon="scan">
-                    Re-enrol my face
+                    Re-enroll my face
                   </Button>
 
                   {!confirmDelete ? (
@@ -298,7 +298,7 @@ export default function Profile() {
                       </b>
                       <p style={{ fontSize: 13, color: 'var(--danger-600)', marginBottom: 14 }}>
                         It is erased from the barangay record immediately and cannot be recovered.
-                        You will sign in with your password instead, and can enrol again any time.
+                        You will sign in with your password instead, and can enroll again any time.
                       </p>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <Button size="s" variant="danger" auto onClick={deleteEnrollment} disabled={deleting}>
@@ -319,7 +319,7 @@ export default function Profile() {
                   camera instead of typing a password.
                 </p>
                 <Button to="/app/enroll" size="s" block icon="scan">
-                  Enrol my face
+                  Enroll my face
                 </Button>
               </>
             )}

@@ -6,25 +6,30 @@ import { Icon } from '../Icon'
 import { MyAvatar } from '../MyAvatar'
 import { GlobalSearch } from '../GlobalSearch'
 import { Button } from '../ui'
-import { MainLogo } from '../MainLogo'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { shortName } from '../../lib/formatters'
 import { OPEN_STATUSES } from '../../lib/status'
+import { MainLogo } from '../MainLogo'
+
+// One line of the wordmark: its own line, in the wordmark's own type.
+// fontSize and color are inherited back on purpose -- .lockup span styles the
+// subtitle beneath and matches any span in here, so without these the name
+// would render in the subtitle's small grey type.
+const NAME_LINE = { display: 'block', fontSize: 'inherit', color: 'inherit' }
 
 const NAV = [
   { group: null, items: [
     { to: '/app', label: 'Dashboard', icon: 'dash', end: true },
     { to: '/app/requests', label: 'My requests', icon: 'doc', badge: 'openRequests' },
     { to: '/app/appointments', label: 'Appointments', icon: 'cal' },
-    { to: '/track', label: 'Track a request', icon: 'search' },
   ]},
   { group: 'Report', items: [
     { to: '/app/blotter', label: 'Blotter report', icon: 'alert' },
-    { to: '/anonymous', label: 'Anonymous message', icon: 'incognito' },
+    { to: '/app/anonymous', label: 'Anonymous message', icon: 'incognito' },
   ]},
   { group: 'Barangay', items: [
-    { to: '/announcements', label: 'Announcements', icon: 'mega' },
+    { to: '/app/announcements', label: 'Announcements', icon: 'mega' },
     { to: '/map', label: 'Barangay map', icon: 'pin' },
     { to: '/app/profile', label: 'My profile', icon: 'user' },
   ]},
@@ -64,8 +69,16 @@ export default function ResidentLayout() {
         <Link to="/" className="lockup">
           <MainLogo className="seal" pill quiet onDark />
           <div>
-            <b>BARANGAY E-ASSIST</b>
-            <span>Barangay Ilawod</span>
+            {/* Two deliberate lines, as in the staff portal: a hyphen is a
+                line-break opportunity, so left to itself the name splits as
+                "BARANGAY E-" / "ASSIST" wherever the type renders wider than
+                the column -- a fallback face, a zoomed page. E-ASSIST is held
+                together so the hyphen can never break it. */}
+            <b>
+              <span style={NAME_LINE}>BARANGAY</span>
+              <span style={{ ...NAME_LINE, whiteSpace: 'nowrap' }}>E-ASSIST</span>
+            </b>
+            <span>Resident portal</span>
           </div>
         </Link>
 

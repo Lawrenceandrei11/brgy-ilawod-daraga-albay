@@ -9,6 +9,7 @@ import { Icon } from '../../components/Icon'
 import { MyAvatar } from '../../components/MyAvatar'
 import { firstName, shortDate, dayParts, timeOnly } from '../../lib/formatters'
 import { OPEN_STATUSES } from '../../lib/status'
+import { publicPhotoUrl } from '../../lib/storage'
 
 export default function Dashboard() {
   const { profile, isApproved } = useAuth()
@@ -44,7 +45,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('announcements')
-        .select('id, title, category, published_at')
+        .select('id, title, category, published_at, cover_path')
         .not('published_at', 'is', null)
         .order('published_at', { ascending: false })
         .limit(3)
@@ -162,7 +163,7 @@ export default function Dashboard() {
               key={s.code}
               to={
                 s.code === 'anonymous'
-                  ? '/anonymous'
+                  ? '/app/anonymous'
                   : s.code === 'blotter'
                     ? '/app/blotter'
                     : `/app/requests/new/${s.code}`
@@ -230,14 +231,14 @@ export default function Dashboard() {
 
           <Card flush>
             <CardHeader title="Announcements">
-              <Button to="/announcements" size="s" variant="ghost" iconRight="chev">
+              <Button to="/app/announcements" size="s" variant="ghost" iconRight="chev">
                 All notices
               </Button>
             </CardHeader>
             <div className="feed">
               {(announcements ?? []).map((a) => (
-                <Link key={a.id} to={`/announcements/${a.id}`} className="feed-item">
-                  <PngSlot name="announcement-placeholder.png" className="thumb" />
+                <Link key={a.id} to={`/app/announcements/${a.id}`} className="feed-item">
+                  <PngSlot name="announcement-placeholder.png" src={publicPhotoUrl(a.cover_path)} className="thumb" />
                   <div className="grow">
                     <b>{a.title}</b>
                     <span>
@@ -303,7 +304,7 @@ export default function Dashboard() {
                     ' The secretary confirms this in person before it can be used to collect documents.'}
                 </p>
                 <Button to="/app/enroll" size="s" variant="secondary" block>
-                  Re-enrol my face
+                  Re-enroll my face
                 </Button>
               </>
             ) : (
@@ -313,20 +314,22 @@ export default function Dashboard() {
                   camera instead of typing a password.
                 </p>
                 <Button to="/app/enroll" size="s" block icon="scan">
-                  Enrol my face
+                  Enroll my face
                 </Button>
               </>
             )}
           </Card>
 
           <div className="anon-card">
-            <PngSlot name="service-anonymous.png" className="slot" onDark quiet />
+            {/* The light version: this card is dark, and the icon the service
+                cards use is dark grey, which all but disappears on it. */}
+            <PngSlot name="service-anonymous-light.png" className="slot" onDark quiet />
             <h3>Something you'd rather not put your name to?</h3>
             <p>
               Send it anonymously. No name, no Resident ID, no email, no phone number — and you
               choose whether the barangay may contact you at all.
             </p>
-            <Button to="/anonymous" size="m" variant="accent" block icon="incognito">
+            <Button to="/app/anonymous" size="m" variant="accent" block icon="incognito">
               Send an anonymous message
             </Button>
           </div>

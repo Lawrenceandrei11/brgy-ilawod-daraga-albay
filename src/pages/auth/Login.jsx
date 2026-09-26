@@ -6,8 +6,8 @@ import { z } from 'zod'
 
 import { supabase, friendlyError } from '../../lib/supabase'
 import { Button, Field, Notice } from '../../components/ui'
-import { MainLogo } from '../../components/MainLogo'
 import { Icon } from '../../components/Icon'
+import { MainLogo } from '../../components/MainLogo'
 
 const schema = z.object({
   email: z.string().min(1, 'Enter your email address').email('That does not look like an email address'),
@@ -21,7 +21,7 @@ const schema = z.object({
  * page points at. This screen is the fallback the prototype also offers:
  * it is what a resident uses when the camera, the lighting or the venue
  * network lets them down, and it is the only way staff sign in — barangay
- * officials do not enrol biometrics.
+ * officials do not enroll biometrics.
  */
 export default function Login() {
   const navigate = useNavigate()

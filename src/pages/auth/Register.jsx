@@ -393,7 +393,7 @@ function StepOne({ defaults, onNext, idFile, setIdFile }) {
           <Icon name="scan" size="lg" style={{ color: 'var(--primary-600)', marginBottom: 12 }} />
           <h3 style={{ fontSize: 16.5, marginBottom: 8 }}>Face enrollment comes next</h3>
           <p style={{ fontSize: 14, color: 'var(--primary-800)' }}>
-            Once your details are submitted you'll be invited to enrol your face. You can skip it
+            Once your details are submitted you'll be invited to enroll your face. You can skip it
             and use your email and password instead.
           </p>
         </Card>
@@ -617,7 +617,7 @@ function StepThree({ data, idFile, onBack, onError, onDone }) {
         </p>
         <Notice icon="info" title="What happens next">
           Visit the barangay hall with the ID you registered, or wait for the secretary to confirm
-          your account. Once activated you can sign in and enrol your face.
+          your account. Once activated you can sign in and enroll your face.
         </Notice>
         <div style={{ marginTop: 22 }}>
           <Button to="/" auto variant="secondary">

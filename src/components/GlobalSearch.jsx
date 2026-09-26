@@ -167,7 +167,9 @@ async function searchResident(term, profileId) {
         key: a.id,
         title: a.title,
         meta: shortDate(a.published_at),
-        to: `/announcements/${a.id}`,
+        // Inside the portal: a resident following a search result keeps their
+        // sidebar and top bar, as they do everywhere else in /app.
+        to: `/app/announcements/${a.id}`,
       })),
     },
     {

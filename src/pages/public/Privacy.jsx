@@ -50,7 +50,7 @@ export default function Privacy() {
 
         <Section id="biometrics" title="How face verification works">
           <p>
-            If you choose to enrol, your camera takes three captures. Each is converted, in your
+            If you choose to enroll, your camera takes three captures. Each is converted, in your
             own browser, into a list of 128 numbers — a <b>template</b>. The images themselves are
             never uploaded, never written to disk, and are discarded as the next frame replaces
             them. Only the numbers are sent to the barangay.
@@ -91,7 +91,7 @@ export default function Privacy() {
               'To confirm you are a resident of Barangay Ilawod before issuing a document in your name',
               'To process, track and release the requests you file',
               'To keep the official barangay record that a clearance, certificate or blotter entry requires by law',
-              'To let you sign in — by password, or by face if you chose to enrol',
+              'To let you sign in — by password, or by face if you chose to enroll',
             ]}
           />
           <p>
@@ -130,7 +130,7 @@ export default function Privacy() {
             <Link to="/app/profile" style={{ fontWeight: 600 }}>
               your profile page
             </Link>
-            . It is erased immediately and you can enrol again later if you want to.
+            . It is erased immediately and you can enroll again later if you want to.
           </p>
           <p>
             Barangay records — a released clearance, a blotter entry — generally cannot be deleted

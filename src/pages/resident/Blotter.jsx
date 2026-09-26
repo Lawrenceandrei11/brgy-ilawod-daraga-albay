@@ -123,7 +123,7 @@ export default function Blotter() {
       {filed && (
         <Notice icon="check" title="Your report has been filed">
           Reference <b>{filed}</b>. The barangay will contact you about mediation. Keep this
-          reference — you can also track it publicly using your surname.
+          reference for when you follow it up at the hall.
         </Notice>
       )}
 
@@ -289,7 +289,7 @@ export default function Blotter() {
             A blotter report is an official record filed in your name. If naming yourself would put
             you at risk, send an anonymous message instead — nothing about it is linked to you.
           </p>
-          <Button to="/anonymous" size="s" variant="secondary" auto icon="incognito">
+          <Button to="/app/anonymous" size="s" variant="secondary" auto icon="incognito">
             Send an anonymous message
           </Button>
         </Card>

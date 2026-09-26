@@ -139,11 +139,11 @@ export default function Services() {
 
       <div style={{ marginTop: 28 }}>
         <Notice icon="info" title="Already filed something?">
-          You can follow any request from the{' '}
-          <Link to="/track" style={{ fontWeight: 600 }}>
-            tracking page
+          Sign in and open{' '}
+          <Link to="/app/requests" style={{ fontWeight: 600 }}>
+            My requests
           </Link>{' '}
-          using its reference number and your surname — no account needed.
+          to follow it from filing to release.
         </Notice>
       </div>
     </div>

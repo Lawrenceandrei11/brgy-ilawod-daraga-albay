@@ -1,25 +1,32 @@
-import { Link, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { supabase } from '../../lib/supabase'
-import { Badge, Button, Card, CardHeader } from '../../components/ui'
+import { supabase, friendlyError } from '../../lib/supabase'
+import { Badge, Button, Card, CardHeader, Notice } from '../../components/ui'
 import { EmptyState, ErrorState, LoadingRows } from '../../components/ui/States'
 import { REQUEST_STATUS } from '../../lib/status'
 import { peso, relative, shortDate } from '../../lib/formatters'
 
+// One chip per value of the request_status enum, plus "all". "All" leads so
+// staff can always get back to the full list in one tap.
 const TABS = [
+  { key: 'all', label: 'All' },
   { key: 'pending', label: 'Awaiting review' },
   { key: 'processing', label: 'In progress' },
   { key: 'approved', label: 'Approved' },
+  { key: 'scheduled', label: 'Scheduled' },
   { key: 'ready', label: 'Ready for pickup' },
   { key: 'rejected', label: 'Returned' },
   { key: 'released', label: 'Released' },
-  { key: 'all', label: 'All' },
 ]
 
 export default function RequestQueue() {
   const [params, setParams] = useSearchParams()
-  const status = params.get('status') ?? 'pending'
+  // An unknown ?status= (an old bookmark, a typo) would reach Postgres as an
+  // invalid enum value and show an error. Fall back to the queue instead.
+  const requested = params.get('status')
+  const status = TABS.some((t) => t.key === requested) ? requested : 'pending'
   const service = params.get('service') ?? 'all'
 
   const { data: services } = useQuery({
@@ -37,7 +44,11 @@ export default function RequestQueue() {
       let q = supabase
         .from('document_requests')
         .select('*, services(name), profiles!document_requests_profile_id_fkey(full_name, resident_id, purok)')
-        .order('filed_at', { ascending: true })
+        // Newest first, under every status and document filter. filed_at is
+        // the creation time (default now()); ref_no breaks ties because it
+        // comes from a sequential yearly counter.
+        .order('filed_at', { ascending: false })
+        .order('ref_no', { ascending: false })
 
       if (status !== 'all') q = q.eq('status', status)
       if (service !== 'all') q = q.eq('service_code', service)
@@ -48,14 +59,86 @@ export default function RequestQueue() {
     },
   })
 
-  const { data: counts } = useQuery({
-    queryKey: ['admin-stats'],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('admin_stats')
+  // The layout already fetches admin_stats for the sidebar badges. Reading it
+  // from there, rather than caching a different shape under the same
+  // ['admin-stats'] key, stops these counts and the sidebar overwriting each
+  // other. Invalidating ['admin-stats'] after a status change refreshes both.
+  const { stats } = useOutletContext() ?? {}
+  const counts = { ...stats?.requests_by_status, all: stats?.requests_total }
+
+  // ---- clearing out released requests ---------------------------------
+  //
+  // Only under the Released filter. A request in any other status is the
+  // barangay's working record, and delete_released_requests() refuses one
+  // regardless of what this page sends.
+  const queryClient = useQueryClient()
+  const clearable = status === 'released'
+  const [picked, setPicked] = useState([])
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
+  const [deleted, setDeleted] = useState(null)
+
+  // A different filter, or a list that has moved on, must not leave stale ids
+  // selected: they would be sent to the server on the next click.
+  useEffect(() => {
+    setPicked([])
+    setDeleteError(null)
+  }, [status, service])
+
+  const rows = data ?? []
+  const shownIds = rows.map((r) => r.id)
+  const selected = picked.filter((id) => shownIds.includes(id))
+  const allShownPicked = shownIds.length > 0 && selected.length === shownIds.length
+  const somePicked = selected.length > 0 && !allShownPicked
+
+  // "Some of them" is a property of the element, not an attribute React can
+  // render, so it is set on the node itself.
+  const selectAllRef = useRef(null)
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = somePicked
+  }, [somePicked])
+
+  const toggleOne = (id) =>
+    setPicked((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]))
+  const toggleAll = () => setPicked(allShownPicked ? [] : shownIds)
+
+  async function removeSelected() {
+    if (selected.length === 0) return
+    const warning =
+      `Permanently delete ${selected.length} released ${selected.length === 1 ? 'request' : 'requests'}?\n\n` +
+      'These records are removed from the database for good and cannot be recovered.\n\n' +
+      'The residents who filed them, their accounts and their other records are not affected.'
+    if (!window.confirm(warning)) return
+
+    setDeleting(true)
+    setDeleteError(null)
+    setDeleted(null)
+    try {
+      const { data: count, error } = await supabase.rpc('delete_released_requests', {
+        p_ids: selected,
+      })
       if (error) throw error
-      return data?.requests_by_status ?? {}
-    },
-  })
+
+      await refetch()
+      // The Released count on the chip, and the sidebar badges, come from
+      // admin_stats.
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+      setPicked([])
+
+      // The database says how many it actually removed. Fewer than asked for
+      // means something changed underneath -- someone reopened a request, or
+      // another member of staff got there first.
+      setDeleted(
+        count === selected.length
+          ? `${count} released ${count === 1 ? 'request has' : 'requests have'} been permanently deleted.`
+          : `${count} of ${selected.length} selected requests were deleted. The rest are no longer released, so they were left alone.`
+      )
+    } catch (err) {
+      setDeleteError(friendlyError(err, 'Those requests could not be deleted. Nothing was removed.'))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   function setParam(key, value) {
     const next = new URLSearchParams(params)
@@ -107,8 +190,39 @@ export default function RequestQueue() {
         ))}
       </div>
 
+      {deleted && (
+        <Notice icon="check" title="Requests deleted">
+          {deleted}
+        </Notice>
+      )}
+      {deleteError && (
+        <Notice tone="danger" icon="alert" title="Could not delete">
+          {deleteError}
+        </Notice>
+      )}
+
       <Card flush>
-        <CardHeader title={`${TABS.find((t) => t.key === status)?.label ?? 'All'} · ${data?.length ?? 0}`} />
+        <CardHeader title={`${TABS.find((t) => t.key === status)?.label ?? 'All'} · ${data?.length ?? 0}`}>
+          {clearable && rows.length > 0 && (
+            <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, color: 'var(--ink-500)' }}>
+                {selected.length > 0
+                  ? `${selected.length} selected`
+                  : 'Select released requests to delete'}
+              </span>
+              <Button
+                size="s"
+                auto
+                variant="ghost"
+                style={{ color: 'var(--danger-600)' }}
+                disabled={selected.length === 0 || deleting}
+                onClick={removeSelected}
+              >
+                {deleting ? 'Deleting…' : 'Delete selected'}
+              </Button>
+            </div>
+          )}
+        </CardHeader>
 
         {isLoading ? (
           <LoadingRows rows={5} />
@@ -124,6 +238,29 @@ export default function RequestQueue() {
           <table className="tbl">
             <thead>
               <tr>
+                {clearable && (
+                  <th style={{ width: 120 }}>
+                    {/* The label makes the whole "Select All" clickable, and
+                        says out loud what the bare checkbox only implied. */}
+                    <label
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        cursor: deleting ? 'default' : 'pointer',
+                      }}
+                    >
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={allShownPicked}
+                        onChange={toggleAll}
+                        disabled={deleting}
+                      />
+                      Select All
+                    </label>
+                  </th>
+                )}
                 <th>Reference</th>
                 <th>Resident</th>
                 <th>Document</th>
@@ -135,6 +272,17 @@ export default function RequestQueue() {
             <tbody>
               {data.map((r) => (
                 <tr key={r.id} className="clickable">
+                  {clearable && (
+                    <td data-label="">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${r.ref_no}`}
+                        checked={picked.includes(r.id)}
+                        onChange={() => toggleOne(r.id)}
+                        disabled={deleting}
+                      />
+                    </td>
+                  )}
                   <td className="ref" data-label="Reference">
                     <Link to={`/admin/requests/${r.ref_no}`}>{r.ref_no}</Link>
                   </td>

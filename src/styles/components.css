@@ -403,6 +403,17 @@ select.control {
   top: 0;
   z-index: 50;
 }
+/* The home page's four sections. The nav scrolls to them itself, clearing the
+   sticky header as it goes; this is for the times the browser does the
+   scrolling instead — a pasted /#services, or the back button — so the
+   heading never lands underneath the header. */
+#home,
+#services,
+#announcements,
+#officials,
+#map {
+  scroll-margin-top: 96px;
+}
 .lockup {
   display: flex;
   align-items: center;
@@ -489,14 +500,18 @@ select.control {
 .mobile-menu.open {
   display: flex;
 }
-.mobile-menu a {
+/* :not(.btn) because a Button with `to` renders as an anchor, and this rule
+   outranks .btn on specificity — so without it the sheet's link colour was
+   painting the primary button's label and icon dark ink on dark teal, and the
+   hover rule below was washing its teal away as well. */
+.mobile-menu a:not(.btn) {
   padding: 12px 14px;
   border-radius: var(--r-md);
   font-size: 15px;
   font-weight: 500;
   color: var(--ink-700);
 }
-.mobile-menu a:hover {
+.mobile-menu a:not(.btn):hover {
   background: var(--ink-50);
 }
 .mobile-menu .btn {
@@ -1157,6 +1172,56 @@ select.control {
   gap: 18px;
   flex-wrap: wrap;
 }
+
+/* ------------------------------------------------------------
+   Officials carousel — the same .off cards in a sliding window.
+   The window clips, so the track can run past both edges without
+   ever widening the page.
+   ------------------------------------------------------------ */
+.carousel {
+  position: relative;
+}
+.carousel-viewport {
+  overflow: hidden;
+  touch-action: pan-y; /* vertical scrolling still belongs to the page */
+}
+.carousel-track {
+  display: flex;
+  align-items: stretch;
+}
+.carousel-track .off {
+  flex: 0 0 auto; /* the card width is measured, not stretched */
+}
+.carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-600);
+  box-shadow: var(--sh-card);
+}
+.carousel-arrow:hover {
+  color: var(--primary-800);
+  border-color: var(--primary-200);
+}
+.carousel-arrow.prev {
+  left: -8px;
+}
+.carousel-arrow.next {
+  right: -8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .carousel-track {
+    transition: none !important;
+  }
+}
 .off {
   background: #fff;
   border: 1px solid var(--ink-200);
@@ -1248,12 +1313,6 @@ select.control {
   flex: none;
 }
 
-.cta-band {
-  background: var(--primary-800);
-  border-radius: var(--r-2xl);
-  padding: 48px;
-  display: grid;
-  grid-template-columns: 1.4fr auto;
 /* Home page preview of the barangay map (MapPreview.jsx). It reuses the full
    map's .imap frame and marker styles below; only its size and the
    click-through into /map are its own. */
@@ -1654,6 +1713,12 @@ select.control {
   }
 }
 
+.cta-band {
+  background: var(--primary-800);
+  border-radius: var(--r-2xl);
+  padding: 48px;
+  display: grid;
+  grid-template-columns: 1.4fr auto;
   gap: 32px;
   align-items: center;
   color: var(--ink-300);
@@ -2558,7 +2623,10 @@ a.who:hover b {
   grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   gap: 10px;
 }
-.slot {
+/* Scoped to the picker: "slot" is also the class on service icons
+   (<PngSlot className="slot">), and an unscoped `background: #fff` here wiped
+   out their image and drew a button border round them. */
+.slots .slot {
   padding: 12px 8px;
   border-radius: var(--r-md);
   border: 1.5px solid var(--ink-200);
@@ -2569,16 +2637,16 @@ a.who:hover b {
   text-align: center;
   transition: border-color 0.16s, background 0.16s, color 0.16s;
 }
-.slot:hover:not(:disabled) {
+.slots .slot:hover:not(:disabled) {
   border-color: var(--primary-400);
   color: var(--primary-800);
 }
-.slot[aria-pressed='true'] {
+.slots .slot[aria-pressed='true'] {
   background: var(--primary-700);
   border-color: var(--primary-700);
   color: #fff;
 }
-.slot:disabled {
+.slots .slot:disabled {
   background: var(--ink-50);
   color: var(--ink-300);
   cursor: not-allowed;

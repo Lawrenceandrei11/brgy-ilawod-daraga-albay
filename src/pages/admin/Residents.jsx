@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { supabase } from '../../lib/supabase'
-import { Badge, Button, Card, CardHeader, Field } from '../../components/ui'
+import { supabase, friendlyError } from '../../lib/supabase'
+import { Badge, Button, Card, CardHeader, Field, Notice } from '../../components/ui'
 import { EmptyState, ErrorState, LoadingRows } from '../../components/ui/States'
 import { shortDate } from '../../lib/formatters'
 
@@ -20,6 +20,10 @@ export default function Residents() {
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? 'pending'
   const [search, setSearch] = useState('')
+  const queryClient = useQueryClient()
+  const [deleting, setDeleting] = useState(null)
+  const [deleteError, setDeleteError] = useState(null)
+  const [deleted, setDeleted] = useState(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-residents', status],
@@ -45,12 +49,59 @@ export default function Residents() {
     )
   })
 
+  /**
+   * delete_resident() in the database does the deciding: staff only, resident
+   * accounts only, never your own, and never one with requests, blotter
+   * reports or appointments behind it. It hands back the file paths, because
+   * the uploads live in storage and are not removed by the row delete.
+   */
+  async function remove(p) {
+    const warning =
+      `Permanently delete ${p.full_name}?\n\n` +
+      'This removes their account, sign-in and face enrollment for good. It cannot be undone.\n\n' +
+      'Residents who have filed a request, a blotter report or an appointment cannot be deleted, ' +
+      'because the barangay record is kept.'
+    if (!window.confirm(warning)) return
+
+    setDeleting(p.id)
+    setDeleteError(null)
+    setDeleted(null)
+    try {
+      const { data, error } = await supabase.rpc('delete_resident', { p_profile_id: p.id })
+      if (error) throw error
+
+      // Best effort: the account is already gone, and a leftover file costs
+      // storage, not correctness.
+      if (data?.valid_id_path) await supabase.storage.from('valid-ids').remove([data.valid_id_path])
+      if (data?.avatar_path) await supabase.storage.from('avatars').remove([data.avatar_path])
+
+      queryClient.invalidateQueries({ queryKey: ['admin-residents'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+      setDeleted(`${data?.full_name ?? p.full_name} has been permanently deleted.`)
+    } catch (err) {
+      setDeleteError(friendlyError(err, 'That resident could not be deleted.'))
+    } finally {
+      setDeleting(null)
+    }
+  }
+
   return (
     <div className="dash-body">
       <div>
         <span className="eyebrow">Residents</span>
         <h1 style={{ fontSize: 27, margin: '8px 0 0' }}>The barangay masterlist</h1>
       </div>
+
+      {deleted && (
+        <Notice icon="check" title="Resident deleted">
+          {deleted}
+        </Notice>
+      )}
+      {deleteError && (
+        <Notice tone="danger" icon="alert" title="Could not delete">
+          {deleteError}
+        </Notice>
+      )}
 
       <div className="filterbar">
         {TABS.map((t) => (
@@ -100,6 +151,7 @@ export default function Residents() {
                 <th>Purok</th>
                 <th>Registered</th>
                 <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -120,6 +172,22 @@ export default function Residents() {
                     <Badge tone={STATUS_TONE[p.status]}>
                       {p.status === 'pending' ? 'To verify' : p.status}
                     </Badge>
+                  </td>
+                  <td data-label="Action">
+                    {/* Staff accounts are not deletable here; the database
+                        refuses them too. */}
+                    {p.role === 'resident' && (
+                      <Button
+                        size="s"
+                        auto
+                        variant="ghost"
+                        style={{ color: 'var(--danger-600)' }}
+                        disabled={deleting === p.id}
+                        onClick={() => remove(p)}
+                      >
+                        {deleting === p.id ? 'Deleting…' : 'Delete'}
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -99,8 +99,7 @@ export default function RequestDetail() {
 
       {justFiled && (
         <Notice icon="check" title="Your request has been filed">
-          Keep the reference number below. You can follow this request from here, or from the
-          public tracking page using the reference and your surname.
+          Keep the reference number below. You can follow this request from here at any time.
         </Notice>
       )}
 

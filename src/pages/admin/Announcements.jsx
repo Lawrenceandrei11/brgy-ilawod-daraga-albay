@@ -6,10 +6,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { supabase, friendlyError } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { Badge, Button, Card, CardHeader, Check, Field, Notice } from '../../components/ui'
+import { Badge, Button, Card, CardHeader, Check, Field, Notice, PhotoPicker } from '../../components/ui'
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { longDate } from '../../lib/formatters'
 import { announcementSmsPreview, broadcastDuration } from '../../lib/sms'
+import { removePhoto, uploadPhoto } from '../../lib/storage'
 
 const CATEGORIES = ['Health & sanitation', 'Utilities', 'Governance', 'Peace & order', 'Events', 'Emergency']
 
@@ -36,6 +37,12 @@ export default function AnnouncementsAdmin() {
   // Kept apart from `error` on purpose: a notice that saved but could not be
   // texted has still been published, and saying otherwise would be a lie.
   const [smsNotice, setSmsNotice] = useState(null)
+  // Ids, not rows: a row object goes stale the moment the list refetches.
+  const [selected, setSelected] = useState(() => new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
+  // A chosen replacement cover, not yet uploaded. Null keeps the current one.
+  const [coverFile, setCoverFile] = useState(null)
 
   const { data: recipients } = useQuery({
     queryKey: ['sms-recipient-count'],
@@ -59,6 +66,26 @@ export default function AnnouncementsAdmin() {
     },
   })
 
+  // Only ids still on screen count. Another staff member may have removed a
+  // notice since it was ticked, and "delete 3 selected" must mean these 3.
+  const visibleIds = (data ?? []).map((a) => a.id)
+  const selectedIds = visibleIds.filter((id) => selected.has(id))
+  const allSelected = visibleIds.length > 0 && selectedIds.length === visibleIds.length
+  const someSelected = selectedIds.length > 0 && !allSelected
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(visibleIds))
+  }
+
   const {
     register,
     handleSubmit,
@@ -69,6 +96,7 @@ export default function AnnouncementsAdmin() {
   function startNew() {
     reset({ title: '', category: '', excerpt: '', body: '', publish: true, sms: false })
     setEditing('new')
+    setCoverFile(null)
     setSmsNotice(null)
   }
 
@@ -82,6 +110,7 @@ export default function AnnouncementsAdmin() {
       sms: false,
     })
     setEditing(row)
+    setCoverFile(null)
     setSmsNotice(null)
   }
 
@@ -103,8 +132,13 @@ export default function AnnouncementsAdmin() {
     }
 
     let savedId = editing === 'new' ? null : editing.id
+    // Uploaded first so the row can point at it, and removed again below if
+    // the notice itself cannot be saved.
+    let uploadedCover = null
 
     try {
+      if (coverFile) uploadedCover = await uploadPhoto(coverFile, 'announcements')
+
       const payload = {
         title: values.title,
         category: values.category,
@@ -113,6 +147,7 @@ export default function AnnouncementsAdmin() {
         published_at: values.publish ? new Date().toISOString() : null,
         author_id: profile.id,
       }
+      if (uploadedCover) payload.cover_path = uploadedCover
 
       if (editing === 'new') {
         payload.slug = `${slugify(values.title)}-${Date.now().toString(36).slice(-4)}`
@@ -131,10 +166,15 @@ export default function AnnouncementsAdmin() {
         if (updateError) throw updateError
       }
 
+      // Only now is the old cover unused.
+      if (uploadedCover && editing !== 'new') removePhoto(editing.cover_path)
+
       setEditing(null)
+      setCoverFile(null)
       queryClient.invalidateQueries({ queryKey: ['admin-announcements'] })
       queryClient.invalidateQueries({ queryKey: ['announcements'] })
     } catch (err) {
+      if (uploadedCover) removePhoto(uploadedCover)
       setError(friendlyError(err, 'The notice could not be saved.'))
       return
     }
@@ -194,6 +234,46 @@ export default function AnnouncementsAdmin() {
     }
   }
 
+  async function removeSelected() {
+    const ids = selectedIds
+    if (!ids.length) return
+    if (!window.confirm('Are you sure you want to delete the selected announcements?')) return
+
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      // One statement, so it is all or nothing -- the same delete remove()
+      // does, and like it, it takes any texts queued for these notices with
+      // it (sms_messages cascades). RLS is the real gate: for anyone who is
+      // not staff it deletes nothing and raises no error, which is why the
+      // rows that came back are counted rather than trusted.
+      const { data: deleted, error: deleteErr } = await supabase
+        .from('announcements')
+        .delete()
+        .in('id', ids)
+        .select('id')
+      if (deleteErr) throw deleteErr
+
+      const count = deleted?.length ?? 0
+      if (count < ids.length) {
+        setDeleteError(
+          count === 0
+            ? 'None of the selected notices were deleted. You may not have permission to delete them.'
+            : `${count} of ${ids.length} notices were deleted. The rest may already have been removed, or you may not have permission.`
+        )
+      }
+
+      setSelected(new Set())
+      queryClient.invalidateQueries({ queryKey: ['admin-announcements'] })
+      queryClient.invalidateQueries({ queryKey: ['announcements'] })
+    } catch (err) {
+      // Nothing was deleted, so the ticks are kept for another try.
+      setDeleteError(friendlyError(err, 'The selected notices could not be deleted.'))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="dash-body">
       <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
@@ -209,6 +289,8 @@ export default function AnnouncementsAdmin() {
       </div>
 
       {error && <Notice tone="danger" icon="alert" title="Could not save">{error}</Notice>}
+
+      {deleteError && <Notice tone="danger" icon="alert" title="Could not delete">{deleteError}</Notice>}
 
       {smsNotice && (
         <Notice
@@ -256,6 +338,14 @@ export default function AnnouncementsAdmin() {
                 </div>
               </div>
 
+              <PhotoPicker
+                label="Cover photo"
+                currentPath={editing === 'new' ? null : editing.cover_path}
+                file={coverFile}
+                onChange={setCoverFile}
+                placeholder="announcement-placeholder.png"
+              />
+
               <div className="field">
                 <label style={{ marginBottom: 8 }}>Text messages</label>
                 <Check
@@ -294,7 +384,15 @@ export default function AnnouncementsAdmin() {
               <Button type="submit" auto icon="check" disabled={isSubmitting}>
                 {isSubmitting ? 'Saving…' : editing === 'new' ? 'Post this notice' : 'Save changes'}
               </Button>
-              <Button type="button" auto variant="ghost" onClick={() => setEditing(null)}>
+              <Button
+                type="button"
+                auto
+                variant="ghost"
+                onClick={() => {
+                  setEditing(null)
+                  setCoverFile(null)
+                }}
+              >
                 Cancel
               </Button>
             </div>
@@ -302,13 +400,38 @@ export default function AnnouncementsAdmin() {
         </Card>
       ) : (
         <Card flush>
-          <CardHeader title={`${data?.length ?? 0} notices`} />
+          {/* In the card header, not the table's <thead>: on phones the head
+              row is hidden and the table becomes stacked cards. */}
+          <CardHeader title={`${data?.length ?? 0} notices`}>
+            {data?.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <label className="check" style={{ alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected
+                    }}
+                    onChange={toggleAll}
+                    disabled={deleting}
+                  />
+                  <span style={{ fontSize: 14, color: 'var(--ink-800)' }}>Select all</span>
+                </label>
+                {selectedIds.length > 0 && (
+                  <Button size="s" auto variant="danger" onClick={removeSelected} disabled={deleting}>
+                    {deleting ? 'Deleting…' : `Delete Selected (${selectedIds.length})`}
+                  </Button>
+                )}
+              </div>
+            )}
+          </CardHeader>
           {isLoading ? (
             <LoadingRows rows={3} />
           ) : data?.length ? (
             <table className="tbl">
               <thead>
                 <tr>
+                  <th aria-label="Select" style={{ width: 1, paddingRight: 0 }} />
                   <th>Title</th>
                   <th>Category</th>
                   <th>Published</th>
@@ -319,6 +442,17 @@ export default function AnnouncementsAdmin() {
               <tbody>
                 {data.map((a) => (
                   <tr key={a.id}>
+                    <td style={{ paddingRight: 0 }}>
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(a.id)}
+                          onChange={() => toggle(a.id)}
+                          disabled={deleting}
+                          aria-label={`Select "${a.title}"`}
+                        />
+                      </label>
+                    </td>
                     <td className="doc" data-label="Title">{a.title}</td>
                     <td className="when" data-label="Category">{a.category}</td>
                     <td className="when" data-label="Published">

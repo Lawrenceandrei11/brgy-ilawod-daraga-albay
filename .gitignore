@@ -38,3 +38,9 @@ pnpm-debug.log*
 # supabase local
 supabase/.temp
 supabase/.branches
+
+# source artwork kept beside the project, not part of the build
+# The originals of the announcement covers. What the app serves are the
+# copies uploaded to Supabase Storage, which announcements.cover_path points
+# at; these are the files they were made from.
+announcement-covers/
