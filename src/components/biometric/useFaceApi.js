@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as faceapi from '@vladmandic/face-api'
 
+import { faceYaw } from './faceAngle'
+
 /**
  * Webcam + face recognition.
  *
@@ -153,8 +155,12 @@ export function useFaceApi() {
   /* ---------------- detection ---------------- */
   /**
    * Reads one frame and returns
-   *   { ok: true, descriptor, score, box }
+   *   { ok: true, descriptor, score, box, yaw }
    *   { ok: false, reason }
+   *
+   * yaw says which way the head is turned and is read only by enrollment,
+   * which needs three different views. Signing in ignores it: a resident
+   * glancing slightly sideways should still be let in.
    */
   const detectOnce = useCallback(async () => {
     const video = videoRef.current
@@ -192,7 +198,12 @@ export function useFaceApi() {
       return { ok: false, reason: REJECT.OFF_CENTRE }
     }
 
-    return { ok: true, descriptor: Array.from(face.descriptor), score, box }
+    // The landmarks were computed a few lines ago to get the descriptor, so
+    // the turn costs nothing but the arithmetic.
+    const lm = face.landmarks
+    const yaw = faceYaw(lm.getNose()[3], lm.getLeftEye(), lm.getRightEye())
+
+    return { ok: true, descriptor: Array.from(face.descriptor), score, box, yaw }
   }, [modelsReady])
 
   return {

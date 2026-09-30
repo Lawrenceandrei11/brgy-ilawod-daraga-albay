@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { supabase, friendlyError } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useFaceApi, descriptorDistance } from '../../components/biometric/useFaceApi'
+import { angleHeld, turnHint } from '../../components/biometric/faceAngle'
 import { FaceScanner, AngleStrip } from '../../components/biometric/FaceScanner'
 import { Badge, Button, Card, Check, Notice, PngSlot, Stepper } from '../../components/ui'
 import { Icon } from '../../components/Icon'
@@ -14,17 +15,31 @@ import { MainLogo } from '../../components/MainLogo'
 const STEPS = ['Consent', 'Position', 'Capture', 'Done']
 
 const ANGLES = [
-  { key: 'center', label: 'Look straight', icon: 'user', prompt: 'Look straight at the camera and hold still.' },
-  { key: 'left', label: 'Turn slightly left', icon: 'chev', prompt: 'Turn your head slightly to your left, about 15 degrees.' },
-  { key: 'right', label: 'Turn slightly right', icon: 'chev', prompt: 'Now turn slightly to your right.' },
+  { key: 'center', label: 'Look straight', icon: 'user', prompt: 'Look straight at the camera.' },
+  { key: 'left', label: 'Turn slightly left', icon: 'chev', prompt: 'Turn your head slightly to the left.' },
+  { key: 'right', label: 'Turn slightly right', icon: 'chev', prompt: 'Turn your head slightly to the right.' },
 ]
 
 // A capture must agree with itself across consecutive frames before it counts.
 // This is a cheap liveness signal: it rejects a hand wobbling a phone screen
 // and it rejects the moment mid-blink or mid-turn. It does NOT defeat a
 // steady printed photograph — see the limitation noted on screen.
+//
+// It is also what makes an automatic capture safe to do at all. Nothing is
+// taken until the face has been found, has been held at the angle being
+// asked for, and has agreed with itself across consecutive readings, so a
+// resident walking past or still settling into place cannot trigger one.
 const STABLE_FRAMES = 3
 const STABLE_TOLERANCE = 0.34
+
+// Fast enough to feel immediate, slow enough that a reading finishes before
+// the next is asked for.
+const POLL_MS = 260
+
+// Long enough for "Photo captured" to be read before the next angle replaces
+// it. Deliberately not a countdown: the resident is told what happened, not
+// made to wait out a number.
+const CAPTURED_PAUSE_MS = 900
 
 export default function Enroll() {
   const navigate = useNavigate()
@@ -34,9 +49,13 @@ export default function Enroll() {
   const [step, setStep] = useState(1)
   const [consent, setConsent] = useState(false)
   const [captured, setCaptured] = useState(0)
-  const [busy, setBusy] = useState(false)
+  // Where the current angle has got to. 'aligning' is also "no face yet";
+  // 'turning' means a face is there but not yet at the angle being asked for.
+  const [phase, setPhase] = useState('aligning')
   const [hint, setHint] = useState(null)
   const [saveError, setSaveError] = useState(null)
+
+  const busy = phase === 'saving'
 
   const {
     videoRef, modelsReady, loadingModels, cameraOn,
@@ -47,9 +66,9 @@ export default function Enroll() {
   const [faceFound, setFaceFound] = useState(false)
   const pollRef = useRef(null)
 
-  /* ---- idle preview loop on the position and capture steps ---- */
+  /* ---- idle preview loop, while the resident is getting into position ---- */
   useEffect(() => {
-    if (!cameraOn || busy || (step !== 2 && step !== 3)) return undefined
+    if (!cameraOn || step !== 2) return undefined
 
     let alive = true
     const tick = async () => {
@@ -66,7 +85,7 @@ export default function Enroll() {
       alive = false
       clearInterval(pollRef.current)
     }
-  }, [cameraOn, busy, step, detectOnce])
+  }, [cameraOn, step, detectOnce])
 
   /* ---- move between steps ---- */
   const goStep = useCallback(
@@ -84,84 +103,140 @@ export default function Enroll() {
     [cameraOn, startCamera, stopCamera]
   )
 
-  /* ---- capture one angle ---- */
-  async function captureAngle() {
-    if (busy || captured >= ANGLES.length) return
-    setBusy(true)
-    setSaveError(null)
+  /* ---- automatic capture ----------------------------------------------
+   *
+   * One loop per angle. It reads a frame, and only when the face is found,
+   * held at the angle being asked for, and agreeing with itself across
+   * STABLE_FRAMES consecutive readings does it take the capture. There is
+   * nothing to press and nothing to wait out; a resident who is not ready
+   * simply does not trigger it.
+   *
+   * Keyed on `captured`, so finishing one angle tears this down and starts
+   * the next one cleanly rather than threading state between them.
+   */
+  useEffect(() => {
+    if (step !== 3 || !cameraOn || captured >= ANGLES.length) return undefined
 
-    try {
-      // Collect consecutive agreeing frames.
-      const samples = []
-      const deadline = Date.now() + 12000
+    const angle = ANGLES[captured]
+    let alive = true
+    let timer = null
+    let samples = []
 
-      while (samples.length < STABLE_FRAMES && Date.now() < deadline) {
-        const r = await detectOnce()
+    setPhase('aligning')
+    setHint(null)
 
-        if (!r.ok) {
-          setHint(r.reason)
-          samples.length = 0 // a bad frame breaks the run
-          await new Promise((res) => setTimeout(res, 260))
-          continue
-        }
+    const again = () => {
+      if (alive) timer = setTimeout(tick, POLL_MS)
+    }
 
-        if (samples.length > 0) {
-          const drift = descriptorDistance(samples[samples.length - 1], r.descriptor)
-          if (drift > STABLE_TOLERANCE) {
-            setHint('Hold still for a moment longer.')
-            samples.length = 0
-            samples.push(r.descriptor)
-            await new Promise((res) => setTimeout(res, 220))
-            continue
-          }
-        }
-
-        samples.push(r.descriptor)
-        setHint(null)
-        await new Promise((res) => setTimeout(res, 200))
-      }
-
-      if (samples.length < STABLE_FRAMES) {
-        setSaveError(
-          'Could not get a steady reading. Find brighter light, hold the device still, and try again.'
-        )
-        setBusy(false)
-        return
-      }
+    async function commit(frames) {
+      setPhase('saving')
 
       // Average the agreeing frames — a mean descriptor is a little more
       // robust than any single frame.
-      const mean = samples[0].map(
-        (_, i) => samples.reduce((sum, s) => sum + s[i], 0) / samples.length
+      const mean = frames[0].map(
+        (_, i) => frames.reduce((sum, f) => sum + f[i], 0) / frames.length
       )
 
-      // Goes through the RPC, not a table insert: face_templates denies
-      // SELECT to every client, so a direct insert could not return anything
-      // and could not be validated.
-      const { error } = await supabase.rpc('enroll_face', {
-        p_angle: ANGLES[captured].key,
-        p_descriptor: mean,
-      })
-      if (error) throw error
-
-      const next = captured + 1
-      setCaptured(next)
-
-      if (next === ANGLES.length) {
-        queryClient.invalidateQueries({ queryKey: ['face-enrollment'] })
-        setTimeout(() => goStep(4), 700)
+      try {
+        // Goes through the RPC, not a table insert: face_templates denies
+        // SELECT to every client, so a direct insert could not return
+        // anything and could not be validated.
+        const { error } = await supabase.rpc('enroll_face', {
+          p_angle: angle.key,
+          p_descriptor: mean,
+        })
+        if (error) throw error
+      } catch (err) {
+        if (!alive) return
+        setSaveError(friendlyError(err, 'That capture could not be saved. Please try again.'))
+        setPhase('aligning')
+        again()
+        return
       }
-    } catch (err) {
-      setSaveError(friendlyError(err, 'That capture could not be saved. Please try again.'))
-    } finally {
-      setBusy(false)
+
+      if (!alive) return
+      setPhase('captured')
+      setHint(null)
+
+      // Let "Photo captured" be read, then move on by itself.
+      timer = setTimeout(() => {
+        if (!alive) return
+        const next = captured + 1
+        if (next === ANGLES.length) {
+          queryClient.invalidateQueries({ queryKey: ['face-enrollment'] })
+        }
+        setCaptured(next)
+      }, CAPTURED_PAUSE_MS)
     }
-  }
+
+    async function tick() {
+      if (!alive) return
+
+      let r
+      try {
+        r = await detectOnce()
+      } catch {
+        again()
+        return
+      }
+      if (!alive) return
+
+      // Nothing usable in frame: say what to do and start the run again.
+      if (!r.ok) {
+        samples = []
+        setFaceFound(false)
+        setHint(r.reason)
+        setPhase('aligning')
+        again()
+        return
+      }
+
+      // A face, but not yet the view this step wants.
+      if (!angleHeld(angle.key, r.yaw)) {
+        samples = []
+        setFaceFound(true)
+        setHint(turnHint(angle.key, r.yaw))
+        setPhase('turning')
+        again()
+        return
+      }
+
+      // Held at the right angle. A frame that disagrees with the one before
+      // it breaks the run, so a turn or a blink cannot be captured midway.
+      if (samples.length && descriptorDistance(samples[samples.length - 1], r.descriptor) > STABLE_TOLERANCE) {
+        samples = []
+      }
+      samples.push(r.descriptor)
+      setFaceFound(true)
+      setHint(null)
+      setPhase('holding')
+
+      if (samples.length >= STABLE_FRAMES) {
+        await commit(samples.slice(-STABLE_FRAMES))
+        return
+      }
+      again()
+    }
+
+    tick()
+
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [step, cameraOn, captured, detectOnce, queryClient])
+
+  /* ---- all three angles done ---- */
+  useEffect(() => {
+    if (step === 3 && captured >= ANGLES.length) goStep(4)
+  }, [step, captured, goStep])
 
   /* ---- scanner presentation ---- */
   const scannerState = (() => {
     if (step === 4) return 'verified'
     if (step === 1 || !cameraOn) return 'permission'
+    if (phase === 'captured') return 'verified'
     if (busy) return 'verifying'
     if (faceFound) return 'detected'
     if (step === 3) return 'scanning'
@@ -169,18 +244,25 @@ export default function Enroll() {
   })()
 
   const scannerTitle = (() => {
-    if (step === 4) return 'Enrollment complete'
+    if (step === 4) return '✓ Face enrollment complete!'
     if (step === 1) return 'Camera not started'
     if (!cameraOn) return 'Camera not started'
-    if (busy) return `Capturing ${ANGLES[captured]?.label.toLowerCase() ?? ''}…`
+    if (step === 3 && phase === 'captured') return '✓ Photo captured!'
+    if (busy) return 'Saving this angle…'
+    if (step === 3 && phase === 'holding') return '✓ Face detected — Hold still...'
     if (hint) return hint
-    if (faceFound) return 'Face detected — hold still'
+    if (faceFound) return '✓ Face detected — Hold still...'
     return 'Align your face inside the outline'
   })()
 
   const scannerSub = (() => {
     if (step === 4) return 'Template stored securely'
     if (step === 1) return 'Read the privacy notice first'
+    if (step === 3 && phase === 'captured') {
+      return captured + 1 < ANGLES.length
+        ? ANGLES[captured + 1].prompt
+        : 'That was the last angle.'
+    }
     if (busy) return 'Keep still while we take the reading'
     if (step === 3) return ANGLES[captured]?.prompt
     return 'Then start capturing'
@@ -318,7 +400,8 @@ export default function Enroll() {
             </h1>
             <p className="auth-sub" style={{ marginBottom: 22 }}>
               Three angles, so the system still recognises you when you tilt your head or the light
-              changes. Follow the highlighted prompt.
+              changes. Just follow the prompt — each angle is taken by itself once your face is
+              steady, and there is nothing to press.
             </p>
 
             <Card padded style={{ padding: 22, marginBottom: 22 }}>
@@ -332,14 +415,17 @@ export default function Enroll() {
                 <div style={{ width: `${Math.max((captured / ANGLES.length) * 100, 8)}%` }} />
               </div>
               <p style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 14 }}>
-                {captured < ANGLES.length ? ANGLES[captured].prompt : 'All three angles captured.'}
+                {captured >= ANGLES.length
+                  ? '✓ Face enrollment complete!'
+                  : phase === 'captured'
+                    ? '✓ Photo captured!'
+                    : phase === 'holding'
+                      ? '✓ Face detected — Hold still...'
+                      : hint ?? ANGLES[captured].prompt}
               </p>
             </Card>
 
             <div className="stack" style={{ gap: 12 }}>
-              <Button block icon="cam" onClick={captureAngle} disabled={busy || !cameraOn}>
-                {busy ? 'Hold still…' : 'Capture this angle'}
-              </Button>
               <Button block variant="ghost" onClick={() => goStep(2)} disabled={busy}>
                 Start over
               </Button>
