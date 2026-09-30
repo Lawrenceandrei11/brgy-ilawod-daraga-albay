@@ -26,9 +26,11 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
  * secretary and treasurer.
  *
  * Two columns: your account on the left, your picture on the right, both
- * ending on the same edge. The position is shown, not chosen -- a role change
- * is a barangay decision, not a profile setting. Whose name may change is
- * settled in the database (migration 19): your own, never another admin's.
+ * ending on the same edge. The position is a title you write for yourself
+ * (migration 25), not the role: a barangay has Kagawads and an SK
+ * Chairperson, and typing any of those grants nothing, because what an
+ * account may do still comes from the role. Whose name and title may change
+ * is settled in the database (migration 19): your own, never another admin's.
  * The password is settled by Supabase Auth the same way -- the call below can
  * only ever change the account that made it.
  */
@@ -55,12 +57,24 @@ function splitName(profile) {
   }
 }
 
+/**
+ * What the Edit form starts from: the name parts, plus the position. An
+ * official who has never written a title sees the one their role implies, so
+ * the field is edited from what the portal is already showing them.
+ */
+function formFor(profile, role) {
+  return {
+    ...splitName(profile),
+    position_title: profile?.position_title ?? ROLE_LABEL[role] ?? '',
+  }
+}
+
 export default function AdminProfile() {
   const { user, profile, role, refetchProfile } = useAuth()
   const queryClient = useQueryClient()
 
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState(() => splitName(profile))
+  const [form, setForm] = useState(() => formFor(profile, role))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [saved, setSaved] = useState(false)
@@ -85,7 +99,7 @@ export default function AdminProfile() {
   const awaitingEmail = user?.new_email ?? null
 
   function startEditing() {
-    setForm(splitName(profile))
+    setForm(formFor(profile, role))
     setError(null)
     setSaved(false)
     setEditing(true)
@@ -100,13 +114,16 @@ export default function AdminProfile() {
     setError(null)
     try {
       // full_name is not sent: the database composes it from these three, so
-      // it can never drift from the parts.
+      // it can never drift from the parts. An empty position is sent as null,
+      // which the portal reads as "no title of my own" and falls back to the
+      // label of the role.
       const { error: saveError } = await supabase
         .from('profiles')
         .update({
           first_name: form.first_name.trim(),
           middle_name: form.middle_name.trim() || null,
           last_name: form.last_name.trim(),
+          position_title: form.position_title.trim() || null,
         })
         .eq('id', profile.id)
       if (saveError) throw saveError
@@ -117,7 +134,7 @@ export default function AdminProfile() {
       setEditing(false)
       setSaved(true)
     } catch (err) {
-      setError(friendlyError(err, 'Your name could not be saved.'))
+      setError(friendlyError(err, 'Your details could not be saved.'))
     } finally {
       setBusy(false)
     }
@@ -308,8 +325,8 @@ export default function AdminProfile() {
       </div>
 
       {saved && (
-        <Notice icon="check" title="Name saved">
-          Your name has been updated everywhere it appears.
+        <Notice icon="check" title="Profile saved">
+          Your name and position have been updated everywhere they appear.
         </Notice>
       )}
       {error && (
@@ -343,6 +360,14 @@ export default function AdminProfile() {
                     onChange={set('middle_name')}
                   />
                   <Field label="Last name" required value={form.last_name} onChange={set('last_name')} />
+                  <Field
+                    label="Position"
+                    hint="optional"
+                    help="Your title, in your own words -- Punong Barangay, Kagawad, SK Chairperson."
+                    maxLength={60}
+                    value={form.position_title}
+                    onChange={set('position_title')}
+                  />
                 </div>
 
                 <div style={formActions}>
@@ -372,8 +397,8 @@ export default function AdminProfile() {
                 <div className="grid-2" style={{ gap: 16, marginTop: 16 }}>
                   <div>
                     <div style={label}>Position</div>
-                    <div style={{ fontSize: 14, color: 'var(--ink-800)' }}>
-                      {ROLE_LABEL[role] ?? role ?? '—'}
+                    <div style={{ fontSize: 14, color: 'var(--ink-800)', overflowWrap: 'anywhere' }}>
+                      {profile?.position_title || ROLE_LABEL[role] || role || '—'}
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -385,7 +410,8 @@ export default function AdminProfile() {
                 </div>
 
                 <p style={{ fontSize: 12.5, color: 'var(--ink-400)', margin: '14px 0 0' }}>
-                  Your position is set by the barangay, not here.
+                  Your position is a title only. What you can do in the Admin portal is set by
+                  the barangay.
                 </p>
               </div>
             )}

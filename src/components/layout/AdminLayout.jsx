@@ -156,7 +156,9 @@ export default function AdminLayout() {
             <MyAvatar name="official-placeholder.png" caption={false} className="av" pill quiet />
             <div>
               <b>{shortName(profile?.full_name) || 'Staff'}</b>
-              <span>{ROLE_LABEL[role] ?? role}</span>
+              {/* The title you wrote for yourself, or the one your role
+                  implies if you never wrote one. */}
+              <span>{profile?.position_title || ROLE_LABEL[role] || role}</span>
             </div>
           </Link>
         </div>
