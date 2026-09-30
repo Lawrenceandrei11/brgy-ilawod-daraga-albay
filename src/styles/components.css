@@ -2149,6 +2149,217 @@ select.control {
   background: var(--danger-500);
   border: 2px solid #fff;
 }
+
+.bell {
+  position: relative;
+}
+/* The unread count, in the barangay's own badge language: the amber pill the
+   sidebar counts already use, ringed in white so it still reads as a count
+   where it overlaps the edge of the button. It carries a number, not a dot,
+   because "3 waiting" and "nothing much" are different messages. */
+.bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border-radius: var(--r-pill);
+  background: var(--accent-500);
+  color: var(--primary-900);
+  border: 2px solid #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bell-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* The confirmation takes the row to itself, so Yes is never beside another
+   action a thumb could reach instead. */
+.bell-confirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.bell-confirm span {
+  color: var(--ink-300);
+}
+.bell-yes {
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: none;
+  border: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--danger-500);
+}
+.bell-yes:hover:not(:disabled) {
+  background: var(--danger-100, #fdeceb);
+}
+.bell-yes:disabled {
+  color: var(--ink-400);
+}
+.bell-mark {
+  flex: none;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: none;
+  border: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-700);
+}
+.bell-mark:hover:not(:disabled) {
+  background: var(--primary-100);
+}
+.bell-mark:disabled {
+  color: var(--ink-400);
+}
+/* Notifications, dropped under the bell. Anchored to the bell's right edge,
+   unlike the search panel, which spans the width of the box it hangs from --
+   the bell sits at the end of the row, so a panel stretched from its left
+   edge would run off the screen. */
+.bell-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: auto;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-overlay);
+  padding: 6px;
+  z-index: 40;
+}
+.bell-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-height: 56px;
+  padding: 10px;
+  border-radius: var(--r-md);
+  color: var(--ink-800);
+  border-left: 3px solid transparent;
+}
+.bell-item:hover,
+.bell-item:focus-visible {
+  background: var(--ink-50);
+  outline: 0;
+}
+/* Unread: marked on the edge and in the weight, not by colour alone. */
+.bell-item.is-new {
+  border-left-color: var(--primary-500);
+  background: var(--primary-100);
+}
+.bell-item svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-400);
+}
+.bell-item.is-new svg {
+  color: var(--primary-600);
+}
+.bell-item b {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+.bell-item.is-new b {
+  font-weight: 600;
+}
+.bell-item span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+/* Always there on a touch screen, which has no hover to reveal it. */
+.bell-x {
+  flex: none;
+  align-self: flex-start;
+  margin: -2px -4px 0 0;
+  padding: 6px;
+  border: 0;
+  background: none;
+  border-radius: var(--r-md);
+  color: var(--ink-300);
+  opacity: 0;
+}
+.bell-item:hover .bell-x,
+.bell-x:focus-visible {
+  opacity: 1;
+}
+.bell-x:hover {
+  background: var(--ink-100);
+  color: var(--ink-700);
+}
+@media (hover: none) {
+  /* No hover to reveal it, and a thumb to hit it with. */
+  .bell-x {
+    opacity: 1;
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+.bell-new {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--accent-500);
+  color: var(--primary-900);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.bell-item i {
+  display: block;
+  margin-top: 2px;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--ink-400);
+}
+.bell-empty {
+  padding: 16px 10px 18px;
+  font-size: 14px;
+  color: var(--ink-500);
+}
+.bell-empty b {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink-800);
+  font-weight: 600;
+}
+.bell-empty p {
+  margin: 0;
+  font-size: 13px;
+}
 .who {
   display: flex;
   align-items: center;
@@ -2913,6 +3124,14 @@ a.who:hover b {
   }
   .search {
     display: none;
+  }
+  .bell {
+    position: static;
+  }
+  .bell-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
   }
   .dash-body {
     padding: 20px 18px 36px;

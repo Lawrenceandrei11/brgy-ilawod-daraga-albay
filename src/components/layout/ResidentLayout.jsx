@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon } from '../Icon'
 import { MyAvatar } from '../MyAvatar'
 import { GlobalSearch } from '../GlobalSearch'
+import { NotificationBell } from '../NotificationBell'
 import { Button } from '../ui'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
@@ -128,9 +129,7 @@ export default function ResidentLayout() {
 
           <GlobalSearch scope="resident" placeholder="Search requests, reference numbers, announcements" />
 
-          <button className="icon-btn" aria-label="Notifications">
-            <Icon name="bell" />
-          </button>
+          <NotificationBell />
 
           <div className="who">
             {/* caption={false}: with no picture set this is a blank avatar,
