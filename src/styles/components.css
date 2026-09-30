@@ -2721,6 +2721,12 @@ a.who:hover b {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* The document filter under the status pills. Capped on a wide screen so it
+   does not run the width of the page, and left to fill a narrow one, which
+   .control already does. */
+.filter-select {
+  max-width: 300px;
+}
 .chip {
   display: inline-flex;
   align-items: center;

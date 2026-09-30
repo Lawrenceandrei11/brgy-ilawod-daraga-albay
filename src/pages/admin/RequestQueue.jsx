@@ -170,24 +170,23 @@ export default function RequestQueue() {
         ))}
       </div>
 
-      <div className="filterbar">
-        <button
-          className="chip"
-          aria-pressed={service === 'all'}
-          onClick={() => setParam('service', 'all')}
+      {/* One control rather than a second row of pills. The status pills
+          carry counts and earn their space; the document is just a choice of
+          one, and the list grows whenever a service is added. */}
+      <div className="filter-select">
+        <select
+          className="control"
+          aria-label="Filter by document type"
+          value={service}
+          onChange={(e) => setParam('service', e.target.value)}
         >
-          Every document
-        </button>
-        {(services ?? []).map((s) => (
-          <button
-            key={s.code}
-            className="chip"
-            aria-pressed={service === s.code}
-            onClick={() => setParam('service', s.code)}
-          >
-            {s.name}
-          </button>
-        ))}
+          <option value="all">Every document</option>
+          {(services ?? []).map((s) => (
+            <option key={s.code} value={s.code}>
+              {s.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {deleted && (
