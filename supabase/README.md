@@ -41,11 +41,16 @@ first impression. Five steps, in order.
    downgrades to a warning if it lacks the privilege, so check they are on.
 
 2. **Set the function secrets.** These never enter the repository, the
-   database, or the browser bundle:
+   database, or the browser bundle. `SMS_API_KEY` is your **Semaphore** API
+   key — `sms-dispatch` calls Semaphore's official API
+   (`api.semaphore.co/api/v4/messages`) directly:
 
    ```bash
-   supabase secrets set SMS_API_KEY=sk-xxxxxxxx SMS_DISPATCH_SECRET=$(openssl rand -hex 32)
+   supabase secrets set SMS_API_KEY=<your Semaphore API key> SMS_DISPATCH_SECRET=$(openssl rand -hex 32)
    ```
+
+   Setting it in Dashboard → Edge Functions → Secrets instead keeps the key
+   out of your shell history.
 
 3. **Give the cron job the same dispatch secret**, from the SQL editor. It is
    stored in Vault rather than in the migration for the obvious reason:
@@ -69,15 +74,34 @@ first impression. Five steps, in order.
    admin **Text messages** screen shows both: `recipient` is who it was for,
    `sent_to` is where it actually went.
 
+   Three Semaphore facts worth knowing before the first test:
+
+   - **Every text costs a credit, redirected tests included.** Test with one
+     queued message, not an announcement: in test mode a notice to twenty
+     residents is twenty paid texts to your own phone. `sms_daily_cap` is the
+     spending guard.
+   - **Sender Name** comes from `settings.sms_semaphore_sendername`. Left
+     unset, none is sent and Semaphore uses the account's default; an account
+     with no approved name has none and refuses the text. Use `SEMAPHORE`
+     until the barangay's own name is approved, then set it to that name. A
+     name still pending approval is refused.
+   - **Accepted is not delivered.** `status = sent` means Semaphore took the
+     message. `provider_response.message_id` is the one to look up in the
+     Semaphore dashboard, which shows whether the network delivered it.
+     Messages beginning with the word "TEST" are silently dropped by the
+     networks.
+
 5. **Go live** — clear `sms_test_recipient` back to `{"value": null}` and
    raise `sms_daily_cap`. `sms_enabled` can be switched off again at any time
    by the captain; nothing queues while it is off.
 
 ### Why SMS is a queue
 
-The provider allows **one message every ten seconds**. A notice sent to two
-hundred residents therefore takes over half an hour, which cannot happen
-inside one HTTP request. So `sms_messages` is an outbox: the trigger and the
+Texts go out at most **one every ten seconds**. Semaphore itself accepts far
+more (120 requests a minute), but every text costs a credit, so this pacing,
+together with `sms_daily_cap`, is what stops a runaway loop from spending the
+barangay's balance. A notice sent to two hundred residents therefore takes
+over half an hour, which cannot happen inside one HTTP request. So `sms_messages` is an outbox: the trigger and the
 announcement RPC only ever write a row, `pg_cron` ticks every ten seconds, and
 `claim_sms()` hands out at most one message at a time.
 
@@ -135,6 +159,44 @@ Worth stating precisely, because it is easy to overclaim:
 
 So "nobody can read the face data" is true of the vector and false of the
 metadata. The paper should say the former.
+
+## SMS providers
+
+Two providers are wired in and exactly one is active, chosen by the
+`sms_provider` setting. Nothing else about SMS changes with the provider:
+the queue, the pacing, the retry policy, the daily cap, the test redirect and
+the `sms_messages` log are all provider-neutral.
+
+| Setting | Value | Meaning |
+| --- | --- | --- |
+| `sms_provider` | `semaphore` | `httpsms` | Which one sends. Anything unrecognised falls back to `semaphore`. |
+| `sms_semaphore_sendername` | e.g. `BRGYILAWOD` | Semaphore only. The approved Sender Name. |
+| `httpsms_from` | e.g. `+639XXXXXXXXX` | httpSMS only. The number of the Android phone signed in to the account. |
+
+Each provider has its own secret, so switching back does not mean putting the
+other one's key back:
+
+```
+supabase secrets set SMS_API_KEY=<Semaphore key>
+supabase secrets set HTTPSMS_API_KEY=<httpSMS key>
+```
+
+**Semaphore** is the barangay's real provider. It refuses to send until the
+telcos approve the Sender Name, which is why `httpsms` is active for now.
+
+**httpSMS** relays through an Android handset on an ordinary SIM, so it needs
+nobody's approval. The cost is that residents see that handset's mobile
+number rather than `BRGYILAWOD`: the message is a real SMS from a real SIM,
+and no app on a phone can set an alphanumeric sender. The phone also has to be
+on, in signal and in credit, or messages sit in the queue.
+
+Switching back once BRGYILAWOD is approved is two rows and no deploy, because
+the function re-reads its settings on every invocation:
+
+```sql
+update settings set value = '{"value": "semaphore"}'::jsonb  where key = 'sms_provider';
+update settings set value = '{"value": "BRGYILAWOD"}'::jsonb where key = 'sms_semaphore_sendername';
+```
 
 ## Demo accounts
 
