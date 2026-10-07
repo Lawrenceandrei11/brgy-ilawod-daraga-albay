@@ -13,10 +13,11 @@ import { relative, shortDate } from '../lib/formatters'
  *
  * There is no notifications table. What the bell shows is read straight from
  * the records the resident can already open -- the status history of their
- * own requests, their appointments, their blotter reports and the published
- * announcements -- merged into one list, newest first. That means the feed
- * cannot drift from the truth the way a parallel copy would: if a request is
- * deleted, its history goes with it, and so do its notifications.
+ * own requests, their appointments, their blotter reports, the published
+ * announcements and the approval of their own registration -- merged into one
+ * list, newest first. That means the feed cannot drift from the truth the way
+ * a parallel copy would: if a request is deleted, its history goes with it,
+ * and so do its notifications.
  *
  * How much has been read is the one thing that cannot be derived, and that
  * lives in profiles.notifications_seen_at (migration 26). Reading is an
@@ -120,6 +121,7 @@ async function loadNotifications(profileId, seenAt, clearedAt) {
     appt: dismissedIds(removed, 'appt-'),
     ann: dismissedIds(removed, 'ann-'),
     blot: dismissedIds(removed, 'blot-'),
+    reg: dismissedIds(removed, 'reg-'),
   }
 
   // Everything at or below the clear mark is hidden. No filter when the
@@ -185,6 +187,23 @@ async function loadNotifications(profileId, seenAt, clearedAt) {
         .order('updated_at', { ascending: false })
         .limit(PER_SOURCE)
         .then(unwrap),
+
+      // The resident's own approval. approve_resident() stamps approved_at
+      // when a staff member approves the registration, so the event is
+      // already recorded and dated on the profile -- there is nothing to
+      // store and nothing to keep in step. Only the resident's own row is
+      // readable here, by the same policy that lets them open their profile.
+      since(
+        supabase
+          .from('profiles')
+          .select('id, approved_at')
+          .eq('id', profileId)
+          .eq('status', 'approved')
+          .not('approved_at', 'is', null),
+        'approved_at'
+      )
+        .limit(1)
+        .then(unwrap),
     ]),
 
     // head: true asks for the tally without the rows behind it.
@@ -226,10 +245,21 @@ async function loadNotifications(profileId, seenAt, clearedAt) {
           .gt('updated_at', watermark),
         gone.blot
       ).then(unwrapCount),
+
+      excluding(
+        supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('id', profileId)
+          .eq('status', 'approved')
+          .not('approved_at', 'is', null)
+          .gt('approved_at', watermark),
+        gone.reg
+      ).then(unwrapCount),
     ]),
   ])
 
-  const [historyRows, appointmentRows, noticeRows, blotterRows] = rows
+  const [historyRows, appointmentRows, noticeRows, blotterRows, approvalRows] = rows
 
   const items = [
     ...historyRows.map((h) => ({
@@ -273,6 +303,19 @@ async function loadNotifications(profileId, seenAt, clearedAt) {
       body: BLOTTER_TEXT[b.status] ?? `Your report is now ${b.status}.`,
       at: b.updated_at,
       to: '/app/blotter',
+    })),
+
+    // One per resident: a profile has a single approved_at. Note that
+    // approve_resident() sets it to now() on every call, so a suspended
+    // account that is later reinstated carries a fresh date and the notice
+    // appears again -- which is right, because being let back in is news.
+    ...approvalRows.map((a) => ({
+      key: `reg-${a.id}`,
+      icon: 'check',
+      title: 'Registration approved',
+      body: 'Your resident registration has been approved. You can now use your Barangay E-Assist account.',
+      at: a.approved_at,
+      to: '/app',
     })),
   ]
     .filter((it) => !removedSet.has(it.key))
