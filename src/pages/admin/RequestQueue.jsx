@@ -3,30 +3,53 @@ import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { supabase, friendlyError } from '../../lib/supabase'
+import { useAuth } from '../../hooks/useAuth'
 import { Badge, Button, Card, CardHeader, Notice } from '../../components/ui'
 import { EmptyState, ErrorState, LoadingRows } from '../../components/ui/States'
-import { REQUEST_STATUS } from '../../lib/status'
+import { REQUEST_STATUS, ROLE_HOME_TAB } from '../../lib/status'
 import { peso, relative, shortDate } from '../../lib/formatters'
 
-// One chip per value of the request_status enum, plus "all". "All" leads so
-// staff can always get back to the full list in one tap.
+// One chip per value of the request_status enum, plus "all", and which desks
+// each belongs to.
+//
+// The chips follow the workflow in migration 28: the secretary checks new
+// requests and handles returned ones, the treasurer takes payment and sees a
+// document through to release, and the Punong Barangay has every tab because
+// their permissions are cumulative -- a chip that led nowhere the captain
+// could act, or stopped short of somewhere they can, would be lying about the
+// job.
+//
+// "All" stays on every role so the whole queue is always one tap away. Hiding
+// a chip is about what a role works on, not what it may see: reading is open
+// to all staff, which is what the reports, the search and the dashboard
+// counts rely on.
 const TABS = [
-  { key: 'all', label: 'All' },
-  { key: 'pending', label: 'Awaiting review' },
-  { key: 'processing', label: 'In progress' },
-  { key: 'approved', label: 'Approved' },
-  { key: 'scheduled', label: 'Scheduled' },
-  { key: 'ready', label: 'Ready for pickup' },
-  { key: 'rejected', label: 'Returned' },
-  { key: 'released', label: 'Released' },
+  { key: 'all', label: 'All', roles: ['secretary', 'captain', 'treasurer'] },
+  { key: 'pending', label: 'Awaiting review', roles: ['secretary', 'captain'] },
+  { key: 'processing', label: 'In progress', roles: ['captain'] },
+  { key: 'approved', label: 'Approved', roles: ['captain', 'treasurer'] },
+  { key: 'scheduled', label: 'Scheduled', roles: ['captain', 'treasurer'] },
+  { key: 'ready', label: 'Ready for pickup', roles: ['captain', 'treasurer'] },
+  { key: 'rejected', label: 'Returned', roles: ['secretary', 'captain'] },
+  { key: 'released', label: 'Released', roles: ['captain', 'treasurer'] },
 ]
 
 export default function RequestQueue() {
+  const { role } = useAuth()
   const [params, setParams] = useSearchParams()
-  // An unknown ?status= (an old bookmark, a typo) would reach Postgres as an
-  // invalid enum value and show an error. Fall back to the queue instead.
+  // An unknown role (the moment before auth resolves) shows every chip
+  // rather than none, so the bar never flashes empty.
+  const tabs = TABS.filter((t) => !ROLE_HOME_TAB[role] || t.roles.includes(role))
+
   const requested = params.get('status')
-  const status = TABS.some((t) => t.key === requested) ? requested : 'pending'
+  // Each role opens on the stage its own work waits at: the secretary on new
+  // requests, the Punong Barangay on checked ones, the treasurer on approved.
+  // A status this role has no chip for -- an old bookmark, a typo, a link
+  // from another desk -- falls back there too, so the bar never shows a
+  // selection with no chip to match it.
+  const status = tabs.some((t) => t.key === requested)
+    ? requested
+    : (ROLE_HOME_TAB[role] ?? 'pending')
   const service = params.get('service') ?? 'all'
 
   const { data: services } = useQuery({
@@ -157,7 +180,7 @@ export default function RequestQueue() {
       </div>
 
       <div className="filterbar">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             className="chip"

@@ -7,7 +7,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { Badge, Button, Card, CardHeader, Field, Notice } from '../../components/ui'
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { Icon } from '../../components/Icon'
-import { REQUEST_STATUS, STATUS_TRANSITIONS } from '../../lib/status'
+import { REQUEST_STATUS, allowedNext, whoseStep, canRecordPayment } from '../../lib/status'
 import { smsStatusLabel } from '../../lib/sms'
 import { longDate, peso, shortDate, timeOnly } from '../../lib/formatters'
 import { SERVICE_FIELDS } from '../../lib/serviceFields'
@@ -15,7 +15,7 @@ import { SERVICE_FIELDS } from '../../lib/serviceFields'
 /**
  * Where a request actually moves through its lifecycle.
  *
- * Which moves are offered comes from STATUS_TRANSITIONS, the same map the
+ * Which moves are offered comes from the role map in lib/status, the same
  * design system uses, so the UI cannot offer a transition the workflow does
  * not have. The history entry is written by a database trigger, not here —
  * so the audit trail records what happened even if this screen has a bug.
@@ -163,8 +163,12 @@ export default function RequestReview() {
     .filter((f) => details[f.name] != null && String(details[f.name]).trim() !== '')
     .map((f) => [f.label, String(details[f.name])])
 
-  const nextStates = STATUS_TRANSITIONS[r.status] ?? []
-  const canCollectFee = role === 'treasurer' || role === 'captain' || role === 'secretary'
+  // Only this role's own moves. guard_request_columns() refuses the rest
+  // whatever this screen offers, so this is the courtesy, not the lock.
+  const nextStates = allowedNext(r.status, role)
+  // Whose desk it is waiting on, when it is not this one's.
+  const waitingOn = nextStates.length === 0 ? whoseStep(r.status) : null
+  const canCollectFee = canRecordPayment(role)
 
   const lastText = texts?.[0]
   // Why a text will not arrive is more useful than the silence itself, and
@@ -242,6 +246,13 @@ export default function RequestReview() {
                   </Button>
                 ))}
               </div>
+            ) : waitingOn ? (
+              // Nothing to press is not the same as nothing to do: say whose
+              // desk it is sitting on rather than implying it is finished.
+              <Notice tone="quiet" icon="clock" title={`Waiting on ${waitingOn}`}>
+                This step is not yours. You can still open and read the request; the next move
+                belongs to {waitingOn}.
+              </Notice>
             ) : (
               <Notice tone="quiet" icon="check" title="This request is finished">
                 Released requests cannot be moved again. The history below is the permanent record.
