@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -6,7 +6,8 @@ import { supabase, friendlyError } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge, Button, Card, CardHeader, Notice } from '../../components/ui'
 import { EmptyState, ErrorState, LoadingRows } from '../../components/ui/States'
-import { REQUEST_STATUS, ROLE_HOME_TAB } from '../../lib/status'
+import { REQUEST_STATUS, ROLE_HOME_TAB, whoseStep } from '../../lib/status'
+import { Icon } from '../../components/Icon'
 import { peso, relative, shortDate } from '../../lib/formatters'
 
 // One chip per value of the request_status enum, plus "all", and which desks
@@ -34,12 +35,97 @@ const TABS = [
   { key: 'released', label: 'Released', roles: ['captain', 'treasurer'] },
 ]
 
+// What has to happen next, in the words staff use. Derived from whoseStep()
+// so the queue cannot say one thing here and the request screen another.
+//
+// A returned request is the exception: the workflow says the secretary picks
+// it up again, but nothing happens until the resident resubmits, so that is
+// what the queue says.
+function nextAction(status) {
+  if (status === 'released') return null
+  if (status === 'rejected') return { label: 'Returned to resident', icon: 'user' }
+  const who = whoseStep(status)
+  if (who === 'the Punong Barangay') return { label: 'For Captain approval', icon: 'shield' }
+  if (who === 'the barangay treasurer') return { label: 'For Treasurer payment', icon: 'brief' }
+  if (who === 'the barangay secretary') return { label: 'For Secretary review', icon: 'user' }
+  return null
+}
+
+// The statuses each desk is actually waiting on, which is what "my work"
+// means. Returned requests are left out: they are the resident's move.
+const MY_WORK = {
+  secretary: ['pending'],
+  captain: ['processing'],
+  treasurer: ['approved', 'scheduled', 'ready'],
+}
+
+// The figures above the chips, one set per desk.
+//
+// Role-filtered for the same reason the chips are: a card that counts work
+// another desk does is noise, and -- worse -- it is a dead button. The status
+// resolver below only accepts a status this role has a chip for, so a card
+// pointing anywhere else would bounce back to the home tab and leave a figure
+// nobody can open. The check below keeps that from creeping back in.
+//
+// Two optional fields carry the one card that is not a single status:
+//   of  -- the statuses to add up, defaulting to [key]
+//   to  -- the tab to open, defaulting to key
+const WORK_CARDS = [
+  // The secretary checks what comes in. Returned requests are shown because
+  // they are this desk's to pick up again, even though the next move is the
+  // resident's -- which is why they are not in MY_WORK.
+  { key: 'pending', roles: ['secretary'], label: 'For checking', icon: 'clock', tone: 'warn' },
+  { key: 'rejected', roles: ['secretary'], label: 'Returned', icon: 'user', tone: 'plain' },
+
+  // The Punong Barangay approves, and may cover either of the other two
+  // desks. One figure for everything that is not their own step, opening the
+  // whole queue, says that without pretending it is a single stage.
+  { key: 'processing', roles: ['captain'], label: 'For approval', icon: 'shield', tone: 'warn' },
+  {
+    key: 'elsewhere',
+    roles: ['captain'],
+    label: 'Elsewhere in the queue',
+    of: ['pending', 'approved', 'scheduled', 'ready'],
+    to: 'all',
+    icon: 'brief',
+    tone: 'plain',
+  },
+
+  // The treasurer takes payment, then sees the document out. Their three
+  // stages add up to their My work figure.
+  { key: 'approved', roles: ['treasurer'], label: 'For payment', icon: 'brief', tone: 'warn' },
+  { key: 'ready', roles: ['treasurer'], label: 'Ready for pickup', icon: 'check', tone: 'good' },
+  { key: 'scheduled', roles: ['treasurer'], label: 'Scheduled', icon: 'cal', tone: 'plain' },
+]
+
+/** The statuses a card adds up, and the tab it opens. */
+const cardStatuses = (c) => c.of ?? [c.key]
+const cardTab = (c) => c.to ?? c.key
+
+// Development only: every card must open a tab its own roles have, or the
+// status resolver will bounce it to the home tab and the figure becomes
+// unclickable -- the bug that role-filtering these cards fixed in the first
+// place. Shouting here is cheaper than finding it on someone's desk.
+if (import.meta.env.DEV) {
+  for (const c of WORK_CARDS) {
+    for (const r of c.roles) {
+      const reachable = TABS.some((t) => t.key === cardTab(c) && t.roles.includes(r))
+      if (!reachable) {
+        console.error(
+          `Work card "${c.label}" opens the "${cardTab(c)}" tab, which the ${r} does not have.`
+        )
+      }
+    }
+  }
+}
+
 export default function RequestQueue() {
   const { role } = useAuth()
   const [params, setParams] = useSearchParams()
   // An unknown role (the moment before auth resolves) shows every chip
   // rather than none, so the bar never flashes empty.
   const tabs = TABS.filter((t) => !ROLE_HOME_TAB[role] || t.roles.includes(role))
+  const cards = WORK_CARDS.filter((c) => !ROLE_HOME_TAB[role] || c.roles.includes(role))
 
   const requested = params.get('status')
   // Each role opens on the stage its own work waits at: the secretary on new
@@ -51,6 +137,11 @@ export default function RequestQueue() {
     ? requested
     : (ROLE_HOME_TAB[role] ?? 'pending')
   const service = params.get('service') ?? 'all'
+
+  // Narrows the list already on screen. The topbar search is the one that
+  // goes looking across the whole system; this one only sifts what is here,
+  // which is why it is not in the URL and costs no request.
+  const [term, setTerm] = useState('')
 
   const { data: services } = useQuery({
     queryKey: ['services'],
@@ -89,6 +180,30 @@ export default function RequestQueue() {
   const { stats } = useOutletContext() ?? {}
   const counts = { ...stats?.requests_by_status, all: stats?.requests_total }
 
+  // The rows after the page search, which is what everything below counts,
+  // renders and selects. Without this the "n selected" line and the delete
+  // could disagree with what staff can actually see.
+  const rows = useMemo(() => {
+    const all = data ?? []
+    const q = term.trim().toLowerCase()
+    if (!q) return all
+    return all.filter((r) =>
+      [r.ref_no, r.profiles?.full_name, r.profiles?.resident_id, r.services?.name]
+        .some((v) => String(v ?? '').toLowerCase().includes(q))
+    )
+  }, [data, term])
+
+  // How much of this queue is waiting on the role reading it.
+  const myWork = (MY_WORK[role] ?? []).reduce((n, k) => n + (counts?.[k] ?? 0), 0)
+
+  // The age of the longest wait, from the rows already loaded -- so it is
+  // only honest for the tab being viewed, and is only shown there.
+  const oldestHere = useMemo(() => {
+    const dates = rows.map((r) => r.filed_at).filter(Boolean)
+    if (dates.length === 0) return null
+    return dates.reduce((a, b) => (new Date(a) < new Date(b) ? a : b))
+  }, [rows])
+
   // ---- clearing out released requests ---------------------------------
   //
   // Only under the Released filter. A request in any other status is the
@@ -108,7 +223,6 @@ export default function RequestQueue() {
     setDeleteError(null)
   }, [status, service])
 
-  const rows = data ?? []
   const shownIds = rows.map((r) => r.id)
   const selected = picked.filter((id) => shownIds.includes(id))
   const allShownPicked = shownIds.length > 0 && selected.length === shownIds.length
@@ -179,7 +293,49 @@ export default function RequestQueue() {
         </div>
       </div>
 
-      <div className="filterbar">
+      {/* What is waiting on the official reading this, before the filters. The
+          figures come from admin_stats, which the layout already fetches for
+          the sidebar badges, so this costs no extra request. */}
+      <div className="workstrip">
+        <button
+          type="button"
+          className="workcard is-mine"
+          onClick={() => setParam('status', (MY_WORK[role] ?? ['all'])[0])}
+        >
+          <Icon name="brief" />
+          <div>
+            <b>{myWork}</b>
+            <span>My work</span>
+            <i>Needs your action</i>
+          </div>
+        </button>
+
+        {cards.map((c) => {
+          const tab = cardTab(c)
+          const open = status === tab
+          const n = cardStatuses(c).reduce((sum, k) => sum + (counts?.[k] ?? 0), 0)
+          return (
+            <button
+              key={c.key}
+              type="button"
+              className={`workcard tone-${c.tone} ${open ? 'is-open' : ''}`.trim()}
+              aria-pressed={open}
+              onClick={() => setParam('status', tab)}
+            >
+              <Icon name={c.icon} />
+              <div>
+                <b>{n}</b>
+                <span>{c.label}</span>
+                {/* Only on the tab being viewed: the age comes from the rows
+                    on screen, so it cannot be known for the others. */}
+                {open && oldestHere && <i>oldest {relative(oldestHere)}</i>}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="filterbar is-compact">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -193,23 +349,36 @@ export default function RequestQueue() {
         ))}
       </div>
 
-      {/* One control rather than a second row of pills. The status pills
-          carry counts and earn their space; the document is just a choice of
-          one, and the list grows whenever a service is added. */}
-      <div className="filter-select">
-        <select
-          className="control"
-          aria-label="Filter by document type"
-          value={service}
-          onChange={(e) => setParam('service', e.target.value)}
-        >
-          <option value="all">Every document</option>
-          {(services ?? []).map((s) => (
-            <option key={s.code} value={s.code}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+      {/* Search and document filter on one line. The search sifts the list
+          already on screen; the topbar search is the one that goes looking
+          across the whole system. */}
+      <div className="queue-filters">
+        <div className="search queue-search">
+          <Icon name="search" />
+          <input
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Search reference no., resident name, or document type…"
+            aria-label="Search this list"
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="filter-select">
+          <select
+            className="control"
+            aria-label="Filter by document type"
+            value={service}
+            onChange={(e) => setParam('service', e.target.value)}
+          >
+            <option value="all">Every document</option>
+            {(services ?? []).map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {deleted && (
@@ -224,7 +393,9 @@ export default function RequestQueue() {
       )}
 
       <Card flush>
-        <CardHeader title={`${TABS.find((t) => t.key === status)?.label ?? 'All'} · ${data?.length ?? 0}`}>
+        <CardHeader
+          title={`${TABS.find((t) => t.key === status)?.label ?? 'All'} · ${rows.length} ${rows.length === 1 ? 'request' : 'requests'}`}
+        >
           {clearable && rows.length > 0 && (
             <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, color: 'var(--ink-500)' }}>
@@ -250,52 +421,43 @@ export default function RequestQueue() {
           <LoadingRows rows={5} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
-        ) : data.length === 0 ? (
-          <EmptyState icon="check" title="Nothing here">
-            {status === 'pending'
-              ? 'Every request has been picked up. The queue is clear.'
-              : 'No requests match this filter.'}
+        ) : rows.length === 0 ? (
+          <EmptyState icon="search" title={term ? 'No matches' : 'Nothing here'}>
+            {term
+              ? `Nothing in this list matches "${term}".`
+              : status === 'pending'
+                ? 'Every request has been picked up. The queue is clear.'
+                : 'No requests match this filter.'}
           </EmptyState>
         ) : (
-          <table className="tbl">
-            <thead>
-              <tr>
-                {clearable && (
-                  <th style={{ width: 120 }}>
-                    {/* The label makes the whole "Select All" clickable, and
-                        says out loud what the bare checkbox only implied. */}
-                    <label
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        cursor: deleting ? 'default' : 'pointer',
-                      }}
-                    >
-                      <input
-                        ref={selectAllRef}
-                        type="checkbox"
-                        checked={allShownPicked}
-                        onChange={toggleAll}
-                        disabled={deleting}
-                      />
-                      Select All
-                    </label>
-                  </th>
-                )}
-                <th>Reference</th>
-                <th>Resident</th>
-                <th>Document</th>
-                <th>Waiting</th>
-                <th>Fee</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((r) => (
-                <tr key={r.id} className="clickable">
+          /* The checkbox column only exists on Released, so the row grid is
+             told which shape it has rather than inferring it from the number
+             of children. */
+          <div className={`reqlist ${clearable ? 'is-pickable' : ''}`.trim()}>
+            {clearable && (
+              /* Select All sits above the rows now that there is no table
+                 header to carry it. Released only, as before. */
+              <div className="reqlist-head">
+                <label className="reqpick">
+                  <input
+                    type="checkbox"
+                    checked={allShownPicked}
+                    ref={selectAllRef}
+                    onChange={toggleAll}
+                    disabled={deleting}
+                    aria-label="Select all released requests shown"
+                  />
+                  Select All
+                </label>
+              </div>
+            )}
+
+            {rows.map((r) => {
+              const next = nextAction(r.status)
+              return (
+                <div key={r.id} className="reqrow">
                   {clearable && (
-                    <td data-label="">
+                    <label className="reqpick only-box">
                       <input
                         type="checkbox"
                         aria-label={`Select ${r.ref_no}`}
@@ -303,44 +465,69 @@ export default function RequestQueue() {
                         onChange={() => toggleOne(r.id)}
                         disabled={deleting}
                       />
-                    </td>
+                    </label>
                   )}
-                  <td className="ref" data-label="Reference">
-                    <Link to={`/admin/requests/${r.ref_no}`}>{r.ref_no}</Link>
-                  </td>
-                  <td className="doc" data-label="Resident">
-                    {r.profiles?.full_name}
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-400)' }}>
+
+                  <span className="reqicon" aria-hidden="true">
+                    <Icon name="doc" />
+                  </span>
+
+                  <div className="reqwho">
+                    <Link to={`/admin/requests/${r.ref_no}`} className="reqref">
+                      {r.ref_no}
+                    </Link>
+                    <span>{r.profiles?.full_name}</span>
+                    <i>
                       {r.profiles?.resident_id}
                       {r.profiles?.purok ? ` · Purok ${r.profiles.purok}` : ''}
-                    </span>
-                  </td>
-                  <td className="when" data-label="Document">{r.services?.name}</td>
-                  <td className="when" data-label="Waiting">
-                    {shortDate(r.filed_at)}
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-400)' }}>
-                      {relative(r.filed_at)}
-                    </span>
-                  </td>
-                  <td className="when" data-label="Fee">
-                    {peso(r.fee)}
+                    </i>
+                  </div>
+
+                  <div className="reqdoc">
+                    <span>{r.services?.name}</span>
+                    <i>
+                      <Icon name="cal" size="sm" />
+                      {shortDate(r.filed_at)} · {relative(r.filed_at)}
+                    </i>
+                  </div>
+
+                  <div className="reqfee">
+                    <em>Fee</em>
+                    <span>{peso(r.fee)}</span>
                     {r.fee > 0 && (
-                      <span
-                        style={{
-                          display: 'block',
-                          fontSize: 12,
-                          color: r.fee_paid ? 'var(--success-600)' : 'var(--warning-600)',
-                        }}
-                      >
+                      <i className={r.fee_paid ? 'is-paid' : 'is-unpaid'}>
                         {r.fee_paid ? 'paid' : 'unpaid'}
-                      </span>
+                      </i>
                     )}
-                  </td>
-                  <td data-label="Status"><Badge status={r.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+
+                  <div className="reqnext">
+                    <em>Next action</em>
+                    {next ? (
+                      <span>
+                        <Icon name={next.icon} size="sm" />
+                        {next.label}
+                      </span>
+                    ) : (
+                      <span className="is-done">Complete</span>
+                    )}
+                  </div>
+
+                  <div className="reqstatus">
+                    <Badge status={r.status} />
+                  </div>
+
+                  <Link
+                    to={`/admin/requests/${r.ref_no}`}
+                    className="reqgo"
+                    aria-label={`Open ${r.ref_no}`}
+                  >
+                    <Icon name="chev" />
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
         )}
       </Card>
 

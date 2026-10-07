@@ -3257,3 +3257,353 @@ a.who:hover b {
   color: var(--ink-600);
   flex: none;
 }
+
+/* ------------------------------------------------------------------
+   Document requests queue -- the work strip and the request list
+   ------------------------------------------------------------------ */
+
+/* What is waiting, answered above the filters. Each figure is a button
+   because each one is also the way into the tab it counts. */
+/* Three cards for the secretary and the captain, four for the treasurer,
+   so the row is told a minimum rather than a count and fills either way. */
+.workstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.workcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  text-align: left;
+  background: #fff;
+  border: 1.5px solid var(--ink-200);
+  border-radius: var(--r-lg);
+  min-width: 0;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.workcard:hover {
+  border-color: var(--primary-300);
+}
+.workcard.is-open {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(14, 124, 139, 0.12);
+}
+.workcard svg {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  color: var(--ink-400);
+}
+.workcard div {
+  min-width: 0;
+}
+.workcard b {
+  display: block;
+  font-family: var(--display);
+  font-size: 22px;
+  line-height: 1.15;
+  color: var(--ink-900);
+}
+.workcard span {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.workcard i {
+  display: block;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--ink-400);
+}
+/* The one card that is about the official reading it, so it takes the accent. */
+.workcard.is-mine {
+  background: var(--primary-100);
+  border-color: var(--primary-200);
+}
+.workcard.is-mine svg,
+.workcard.is-mine b,
+.workcard.is-mine span {
+  color: var(--primary-800);
+}
+.workcard.is-mine i {
+  color: var(--primary-700);
+}
+.workcard.tone-warn svg {
+  color: var(--accent-600);
+}
+.workcard.tone-good svg {
+  color: var(--success-500);
+}
+
+/* The status pills sit between the strip and the search now, so they are
+   a shade tighter than a filterbar standing on its own. */
+.filterbar.is-compact .chip {
+  padding: 6px 12px;
+}
+
+/* Page search and document filter share one line, and wrap together. */
+.queue-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.queue-search {
+  flex: 1 1 320px;
+  max-width: none;
+}
+.queue-filters .filter-select {
+  flex: 0 0 260px;
+}
+
+/* ---- the list ---- */
+.reqlist-head {
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--ink-100);
+  background: var(--ink-50);
+}
+.reqpick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+.reqpick.only-box {
+  gap: 0;
+}
+
+/* One grid per row, so the columns line up down the list without a table. */
+.reqrow {
+  display: grid;
+  grid-template-columns: auto 1.6fr 1.5fr 0.8fr 1.2fr auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--ink-100);
+}
+.reqrow:last-child {
+  border-bottom: 0;
+}
+.reqrow:hover {
+  background: var(--ink-50);
+}
+/* Released carries a checkbox, so that list gets the eight-column shape. */
+.reqlist.is-pickable .reqrow {
+  grid-template-columns: auto auto 1.6fr 1.5fr 0.8fr 1.2fr auto auto;
+}
+.reqicon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+.reqicon svg {
+  width: 18px;
+  height: 18px;
+}
+.reqwho,
+.reqdoc,
+.reqfee,
+.reqnext {
+  min-width: 0;
+}
+.reqref {
+  display: block;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--primary-800);
+}
+.reqref:hover {
+  text-decoration: underline;
+}
+.reqwho span {
+  display: block;
+  font-size: 13.5px;
+  color: var(--ink-800);
+}
+.reqwho i,
+.reqdoc i {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--ink-400);
+}
+.reqdoc span {
+  display: block;
+  font-size: 13.5px;
+  color: var(--ink-800);
+  margin-bottom: 2px;
+}
+/* A small caps label over its value, the way the reference groups them. */
+.reqfee em,
+.reqnext em {
+  display: block;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+  margin-bottom: 2px;
+}
+.reqfee span {
+  font-size: 13.5px;
+  color: var(--ink-800);
+}
+.reqfee i {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+}
+.reqfee i.is-paid {
+  color: var(--success-600);
+}
+.reqfee i.is-unpaid {
+  color: var(--warning-600);
+}
+.reqnext span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-700);
+}
+.reqnext span.is-done {
+  color: var(--ink-400);
+}
+.reqnext svg {
+  flex: none;
+  color: var(--ink-400);
+}
+.reqgo {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-md);
+  color: var(--ink-300);
+}
+.reqgo:hover {
+  background: var(--ink-100);
+  color: var(--primary-700);
+}
+
+@media (max-width: 1100px) {
+  /* A lower floor from here down, so the treasurer's four cards stay on one
+     row instead of leaving a lone card stranded on a second. */
+  .workstrip {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+  /* The row gives up the fee before it gives up anything that identifies
+     the request; the review screen carries the fee either way. */
+  .reqrow {
+    grid-template-columns: auto 1.4fr 1.3fr 1.1fr auto auto;
+  }
+  .reqlist.is-pickable .reqrow {
+    grid-template-columns: auto auto 1.4fr 1.3fr 1.1fr auto auto;
+  }
+  .reqfee {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .workstrip {
+    gap: 10px;
+  }
+  .workcard {
+    padding: 12px;
+    gap: 10px;
+  }
+  .workcard b {
+    font-size: 19px;
+  }
+  /* The topbar search is hidden at this width; this one is not the
+     topbar, so it stays. */
+  .search.queue-search {
+    display: flex;
+  }
+  .queue-filters .filter-select {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  /* A row becomes a card. Every cell is placed by hand here, because the
+     checkbox appears on Released only and auto-placement would shift the
+     whole card sideways on that one tab. */
+  .reqrow {
+    grid-template-columns: auto 1fr auto;
+    gap: 2px 12px;
+    padding: 14px 18px;
+  }
+  .reqlist.is-pickable .reqrow {
+    grid-template-columns: auto 1fr auto;
+  }
+  .reqpick.only-box {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .reqicon {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  /* On Released the checkbox already holds the left rail, and the document
+     type is written out two lines below, so the icon only costs width the
+     resident's name needs. */
+  .reqlist.is-pickable .reqicon {
+    display: none;
+  }
+  /* The icon sits beside the name, not halfway down the stacked card. */
+  .reqrow > .reqicon,
+  .reqrow > .reqpick {
+    align-self: start;
+  }
+  .reqwho {
+    grid-column: -3;
+    grid-row: 1;
+  }
+  .reqstatus {
+    grid-column: -2;
+    grid-row: 1;
+    align-self: start;
+  }
+  /* The details sit under the pair above, indented to the same edge. */
+  .reqdoc {
+    grid-column: -3 / -1;
+    grid-row: 2;
+    margin-top: 8px;
+  }
+  .reqfee {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    grid-column: -3 / -1;
+    grid-row: 3;
+    margin-top: 8px;
+  }
+  .reqnext {
+    grid-column: -3 / -1;
+    grid-row: 4;
+    margin-top: 6px;
+  }
+  /* Label beside its value once the cells are stacked in a card. */
+  .reqfee em,
+  .reqnext em {
+    display: inline;
+    margin-right: 2px;
+  }
+  .reqgo {
+    display: none;
+  }
+}
