@@ -10,30 +10,53 @@ import { REQUEST_STATUS, ROLE_HOME_TAB, whoseStep } from '../../lib/status'
 import { Icon } from '../../components/Icon'
 import { peso, relative, shortDate } from '../../lib/formatters'
 
-// One chip per value of the request_status enum, plus "all", and which desks
-// each belongs to.
+// One tab per value of the request_status enum, plus "all", and which desk
+// it belongs to.
 //
-// The chips follow the workflow in migration 28: the secretary checks new
-// requests and handles returned ones, the treasurer takes payment and sees a
-// document through to release, and the Punong Barangay has every tab because
-// their permissions are cumulative -- a chip that led nowhere the captain
-// could act, or stopped short of somewhere they can, would be lying about the
-// job.
+// The tabs follow the three hands of migration 28 and stop there. The
+// secretary checks what comes in and handles what comes back; the Punong
+// Barangay approves; the treasurer takes payment and sees the document out
+// to release. A desk's own stages are the ones it can reach in a tap.
 //
-// "All" stays on every role so the whole queue is always one tap away. Hiding
-// a chip is about what a role works on, not what it may see: reading is open
-// to all staff, which is what the reports, the search and the dashboard
-// counts rely on.
+// The captain's permissions are still cumulative -- migration 28 lets them
+// make any move in the workflow, and the request screen offers it. What they
+// no longer have is a shortcut into the other two desks' stages, because a
+// bar that showed every stage to one role told nobody what their job was.
+//
+// "All" stays on every role, so the whole queue is always one tap away and a
+// captain covering another desk can still find the work. Hiding a tab is
+// about what a role works on, not what it may see: reading is open to all
+// staff, which is what the reports, the search and the dashboard counts rely
+// on.
 const TABS = [
   { key: 'all', label: 'All', roles: ['secretary', 'captain', 'treasurer'] },
-  { key: 'pending', label: 'Awaiting review', roles: ['secretary', 'captain'] },
+  { key: 'pending', label: 'Awaiting review', roles: ['secretary'] },
   { key: 'processing', label: 'In progress', roles: ['captain'] },
   { key: 'approved', label: 'Approved', roles: ['captain', 'treasurer'] },
-  { key: 'scheduled', label: 'Scheduled', roles: ['captain', 'treasurer'] },
-  { key: 'ready', label: 'Ready for pickup', roles: ['captain', 'treasurer'] },
-  { key: 'rejected', label: 'Returned', roles: ['secretary', 'captain'] },
-  { key: 'released', label: 'Released', roles: ['captain', 'treasurer'] },
+  { key: 'scheduled', label: 'Scheduled', roles: ['treasurer'] },
+  { key: 'ready', label: 'Ready for pickup', roles: ['treasurer'] },
+  { key: 'rejected', label: 'Returned', roles: ['secretary'] },
+  { key: 'released', label: 'Released', roles: ['treasurer'] },
 ]
+
+// What each desk is called, for saying so at the top of the page rather than
+// leaving it to be inferred from which tabs happen to be there.
+const ROLE_DESK = {
+  secretary: 'Checking desk',
+  captain: 'Approval desk',
+  treasurer: 'Payment and release desk',
+}
+
+// Whose stage a tab belongs to, for explaining a status another desk owns.
+// whoseStep() answers this for every status that still has a move left in it,
+// which is all of them but Released -- a collected document is nobody's next
+// step. This covers that one, from the tab's own last desk.
+const DESK_OWNER = {
+  secretary: 'the barangay secretary',
+  captain: 'the Punong Barangay',
+  treasurer: 'the barangay treasurer',
+}
+const deskOwning = (tab) => whoseStep(tab.key) ?? DESK_OWNER[tab.roles[tab.roles.length - 1]]
 
 // What has to happen next, in the words staff use. Derived from whoseStep()
 // so the queue cannot say one thing here and the request screen another.
@@ -59,11 +82,11 @@ const MY_WORK = {
   treasurer: ['approved', 'scheduled', 'ready'],
 }
 
-// The figures above the chips, one set per desk.
+// The figures above the status bar, one set per desk.
 //
-// Role-filtered for the same reason the chips are: a card that counts work
+// Role-filtered for the same reason the tabs are: a card that counts work
 // another desk does is noise, and -- worse -- it is a dead button. The status
-// resolver below only accepts a status this role has a chip for, so a card
+// resolver below only accepts a status this role has a tab for, so a card
 // pointing anywhere else would bounce back to the home tab and leave a figure
 // nobody can open. The check below keeps that from creeping back in.
 //
@@ -122,7 +145,7 @@ if (import.meta.env.DEV) {
 export default function RequestQueue() {
   const { role } = useAuth()
   const [params, setParams] = useSearchParams()
-  // An unknown role (the moment before auth resolves) shows every chip
+  // An unknown role (the moment before auth resolves) shows every status
   // rather than none, so the bar never flashes empty.
   const tabs = TABS.filter((t) => !ROLE_HOME_TAB[role] || t.roles.includes(role))
   const cards = WORK_CARDS.filter((c) => !ROLE_HOME_TAB[role] || c.roles.includes(role))
@@ -130,13 +153,40 @@ export default function RequestQueue() {
   const requested = params.get('status')
   // Each role opens on the stage its own work waits at: the secretary on new
   // requests, the Punong Barangay on checked ones, the treasurer on approved.
-  // A status this role has no chip for -- an old bookmark, a typo, a link
-  // from another desk -- falls back there too, so the bar never shows a
-  // selection with no chip to match it.
+  // A status this role has no tab for falls back there too, so the bar never
+  // shows a selection with no tab to match it.
   const status = tabs.some((t) => t.key === requested)
     ? requested
     : (ROLE_HOME_TAB[role] ?? 'pending')
+
+  // ...but say so when it happens. The dashboard links straight to a couple
+  // of stages, and those links reach all three desks, so landing somewhere
+  // other than where you clicked has to be explained rather than guessed at.
+  // Only for a real stage owned by another desk: a typo in the URL is not
+  // worth a notice.
+  const elsewhere = TABS.find(
+    (t) => t.key === requested && t.key !== status && !t.roles.includes(role)
+  )
   const service = params.get('service') ?? 'all'
+
+  // The bar scrolls sideways once the statuses outrun it, so the open one can
+  // sit off the end -- after a reload, or when a role's own tab is last. Bring
+  // it back into view, and only then: nudging a tab that is already visible
+  // would make the bar twitch on every click. The bar scrolls, never the page.
+  const barRef = useRef(null)
+  useEffect(() => {
+    const bar = barRef.current
+    const on = bar?.querySelector('.statustab.is-on')
+    if (!bar || !on) return
+    const pad = 8
+    const hidden = on.offsetLeft < bar.scrollLeft + pad
+      || on.offsetLeft + on.offsetWidth > bar.scrollLeft + bar.clientWidth - pad
+    if (!hidden) return
+    bar.scrollTo({
+      left: Math.max(0, on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2),
+      behavior: 'smooth',
+    })
+  }, [status, role])
 
   // Narrows the list already on screen. The topbar search is the one that
   // goes looking across the whole system; this one only sifts what is here,
@@ -210,7 +260,13 @@ export default function RequestQueue() {
   // barangay's working record, and delete_released_requests() refuses one
   // regardless of what this page sends.
   const queryClient = useQueryClient()
-  const clearable = status === 'released'
+  // Released is the treasurer's stage, so clearing it is the treasurer's to
+  // do. Tied to the role's own tabs rather than to the status on screen, and
+  // the database says the same thing in migration 29 -- this only decides
+  // whether the controls are drawn.
+  const clearable =
+    status === 'released' &&
+    TABS.some((t) => t.key === 'released' && t.roles.includes(role))
   const [picked, setPicked] = useState([])
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
@@ -257,7 +313,7 @@ export default function RequestQueue() {
       if (error) throw error
 
       await refetch()
-      // The Released count on the chip, and the sidebar badges, come from
+      // The Released count on the tab, and the sidebar badges, come from
       // admin_stats.
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
       setPicked([])
@@ -288,7 +344,11 @@ export default function RequestQueue() {
     <div className="dash-body">
       <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
         <div className="grow">
-          <span className="eyebrow">Document requests</span>
+          {/* Which desk this is, said rather than left to be worked out from
+              the tabs that happen to be on the bar. */}
+          <span className="eyebrow">
+            Document requests{ROLE_DESK[role] ? ` · ${ROLE_DESK[role]}` : ''}
+          </span>
           <h1 style={{ fontSize: 27, margin: '8px 0 0' }}>The queue</h1>
         </div>
       </div>
@@ -335,16 +395,20 @@ export default function RequestQueue() {
         })}
       </div>
 
-      <div className="filterbar is-compact">
+      {/* One bar holding every status this desk has, counts in place. Pills
+          in a field wrapped to three rows on a phone and pushed the queue
+          itself below the fold; this scrolls sideways instead. */}
+      <div className="statusbar" ref={barRef} role="group" aria-label="Filter by status">
         {tabs.map((t) => (
           <button
             key={t.key}
-            className="chip"
+            type="button"
+            className={`statustab ${status === t.key ? 'is-on' : ''}`.trim()}
             aria-pressed={status === t.key}
             onClick={() => setParam('status', t.key)}
           >
             {t.label}
-            {counts?.[t.key] > 0 && <span className="chip-n">{counts[t.key]}</span>}
+            {counts?.[t.key] > 0 && <span className="statusn">{counts[t.key]}</span>}
           </button>
         ))}
       </div>
@@ -380,6 +444,15 @@ export default function RequestQueue() {
           </select>
         </div>
       </div>
+
+      {/* Followed a link to another desk's stage. Saying where you landed and
+          why beats a silent bounce to a tab you did not ask for. */}
+      {elsewhere && (
+        <Notice icon="info" tone="quiet" title={`${elsewhere.label} is ${deskOwning(elsewhere)}'s stage`}>
+          You were sent to your own queue instead. The whole queue, that stage
+          included, is still under <b>All</b>.
+        </Notice>
+      )}
 
       {deleted && (
         <Notice icon="check" title="Requests deleted">

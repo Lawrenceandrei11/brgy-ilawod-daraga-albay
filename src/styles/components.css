@@ -3338,10 +3338,88 @@ a.who:hover b {
   color: var(--success-500);
 }
 
-/* The status pills sit between the strip and the search now, so they are
-   a shade tighter than a filterbar standing on its own. */
-.filterbar.is-compact .chip {
-  padding: 6px 12px;
+/* The status filter: one bar rather than a field of loose pills.
+   Compact, so the queue itself starts near the top of the screen, and
+   scrolling sideways on a narrow one -- eight statuses wrapped to three
+   rows of pills pushed the list below the fold on a phone. */
+.statusbar {
+  display: flex;
+  align-items: stretch;
+  padding: 4px;
+  /* A shadow at whichever edge has more statuses beyond it, so a cut-off bar
+     says so. The white covers scroll with the content and sit on top of the
+     shadows, hiding each one once that end is reached -- no JS, no listener. */
+  background:
+    linear-gradient(90deg, #fff 40%, rgba(255, 255, 255, 0)) left / 28px 100% no-repeat local,
+    linear-gradient(270deg, #fff 40%, rgba(255, 255, 255, 0)) right / 28px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(5, 39, 51, 0.13), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(5, 39, 51, 0.13), transparent) right / 14px 100% no-repeat scroll,
+    #fff;
+  border: 1.5px solid var(--ink-200);
+  border-radius: var(--r-lg);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  /* A flex item will not shrink below its content without this, so the bar
+     would widen the whole page instead of scrolling inside itself. */
+  min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.statusbar::-webkit-scrollbar {
+  display: none;
+}
+
+.statustab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 7px 13px;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-600);
+  white-space: nowrap;
+  transition: background 0.16s, color 0.16s;
+}
+/* A hairline between neighbours, drawn by the one on the right so the first
+   has none. It lifts either side of the open status, whose own fill is
+   already doing the separating. */
+.statustab + .statustab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 1px;
+  background: var(--ink-200);
+}
+.statustab.is-on::before,
+.statustab.is-on + .statustab::before {
+  background: transparent;
+}
+.statustab:hover {
+  color: var(--primary-700);
+}
+.statustab.is-on {
+  background: var(--primary-700);
+  color: #fff;
+}
+.statustab.is-on:hover {
+  color: #fff;
+}
+.statusn {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--ink-100);
+  color: var(--ink-600);
+}
+.statustab.is-on .statusn {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
 }
 
 /* Page search and document filter share one line, and wrap together. */
