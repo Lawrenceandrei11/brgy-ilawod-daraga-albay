@@ -9,6 +9,13 @@ import { Button, Card, Check, Field, Notice, PngSlot, Stepper } from '../../comp
 import { Icon } from '../../components/Icon'
 import { longDate } from '../../lib/formatters'
 import { MainLogo } from '../../components/MainLogo'
+import { optionalNumber } from '../../lib/formFields'
+import {
+  MIN_REGISTRATION_AGE,
+  isOldEnoughToRegister,
+  residencyProblem,
+  yearsSince,
+} from '../../lib/age'
 
 const STEPS = ['Personal details', 'Household & address', 'Review & submit']
 
@@ -20,16 +27,9 @@ const ID_TYPES = [
 const CIVIL_STATUS = ['Single', 'Married', 'Widowed', 'Separated']
 
 // Residents must be 15 or older, matching the note in the prototype.
-const MIN_AGE = 15
-
-function yearsSince(dateString) {
-  const dob = new Date(dateString)
-  const now = new Date()
-  let age = now.getFullYear() - dob.getFullYear()
-  const m = now.getMonth() - dob.getMonth()
-  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1
-  return age
-}
+// The rule and the age maths now live in lib/age.js, so the profile editor
+// enforces the same thing.
+const MIN_AGE = MIN_REGISTRATION_AGE
 
 const step1Schema = z
   .object({
@@ -57,13 +57,27 @@ const step1Schema = z
     path: ['confirm_password'],
   })
 
-const step2Schema = z.object({
-  purok: z.coerce.number().int().min(1, 'Select your purok').max(7, 'Barangay Ilawod has 7 puroks'),
-  address_line: z.string().trim().min(6, 'Enter your house number and street'),
-  years_of_residency: z.coerce.number().int().min(0, 'Enter a number').max(120, 'Enter a realistic number'),
-  household_head: z.string().trim().optional(),
-  household_size: z.coerce.number().int().min(1, 'A household has at least one person').max(30).optional(),
-})
+// A factory rather than a constant: years of residency has to be checked
+// against the date of birth, which was collected back in step 1. The step-2
+// form is handed the running answers, so it can close over that date.
+const step2SchemaFor = (dateOfBirth) =>
+  z
+    .object({
+      purok: z.coerce.number().int().min(1, 'Select your purok').max(7, 'Barangay Ilawod has 7 puroks'),
+      address_line: z.string().trim().min(6, 'Enter your house number and street'),
+      years_of_residency: z.coerce.number().int().min(0, 'Enter a number').max(120, 'Enter a realistic number'),
+      household_head: z.string().trim().optional(),
+      // Optional, so a blank input has to mean "not given" rather than zero.
+      household_size: optionalNumber(
+        z.coerce.number().int().min(1, 'A household has at least one person').max(30),
+      ),
+    })
+    .superRefine((d, ctx) => {
+      const problem = residencyProblem(d.years_of_residency, dateOfBirth)
+      if (problem) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['years_of_residency'], message: problem })
+      }
+    })
 
 export default function Register() {
   const navigate = useNavigate()
@@ -414,7 +428,10 @@ function StepTwo({ defaults, onBack, onNext }) {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm({ resolver: zodResolver(step2Schema), defaultValues: defaults })
+  } = useForm({
+    resolver: zodResolver(step2SchemaFor(defaults.date_of_birth)),
+    defaultValues: defaults,
+  })
 
   return (
     <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
@@ -528,6 +545,19 @@ function StepThree({ data, idFile, onBack, onError, onDone }) {
   const [pendingActivation, setPendingActivation] = useState(false)
 
   async function submit() {
+    // Both of these were already checked by the step schemas, but a resident
+    // can walk back to step 1 and change their date of birth after step 2 has
+    // passed. Nothing is created until the pair agrees.
+    if (!isOldEnoughToRegister(data.date_of_birth)) {
+      onError(`Residents must be  or older to register. Check the date of birth in step 1.`)
+      return
+    }
+    const residency = residencyProblem(data.years_of_residency, data.date_of_birth)
+    if (residency) {
+      onError(`. Check the date of birth in step 1 and the years of residency in step 2.`)
+      return
+    }
+
     setBusy(true)
     onError(null)
 

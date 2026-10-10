@@ -10,17 +10,31 @@ import { Badge, Button, Card, CardHeader, Check, Field, Notice, PngSlot } from '
 import { Icon } from '../../components/Icon'
 import { ProfilePictureCard } from '../../components/ProfilePictureCard'
 import { longDate, shortDate } from '../../lib/formatters'
+import { residencyProblem } from '../../lib/age'
+import { optionalNumber } from '../../lib/formFields'
 
-const schema = z.object({
-  mobile: z.string().trim().regex(/^09\d{9}$/, 'Enter an 11-digit mobile number starting with 09'),
-  civil_status: z.string().optional(),
-  purok: z.coerce.number().int().min(1).max(7),
-  address_line: z.string().trim().min(6, 'Enter your house number and street'),
-  years_of_residency: z.coerce.number().int().min(0).max(120),
-  household_head: z.string().trim().optional(),
-  household_size: z.coerce.number().int().min(1).max(30).optional(),
-  sms_opt_in: z.boolean().default(true),
-})
+// A factory, for the same reason as the registration wizard's step 2: years of
+// residency only means anything next to the date of birth. A resident cannot
+// edit their own date of birth, so the stored one is the measure.
+const schemaFor = (dateOfBirth) =>
+  z
+    .object({
+      mobile: z.string().trim().regex(/^09\d{9}$/, 'Enter an 11-digit mobile number starting with 09'),
+      civil_status: z.string().optional(),
+      purok: z.coerce.number().int().min(1).max(7),
+      address_line: z.string().trim().min(6, 'Enter your house number and street'),
+      years_of_residency: z.coerce.number().int().min(0).max(120),
+      household_head: z.string().trim().optional(),
+      // Optional, so a blank input has to mean "not given" rather than zero.
+      household_size: optionalNumber(z.coerce.number().int().min(1).max(30)),
+      sms_opt_in: z.boolean().default(true),
+    })
+    .superRefine((d, ctx) => {
+      const problem = residencyProblem(d.years_of_residency, dateOfBirth)
+      if (problem) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['years_of_residency'], message: problem })
+      }
+    })
 
 export default function Profile() {
   const { profile, refetchProfile, status } = useAuth()
@@ -46,7 +60,7 @@ export default function Profile() {
     handleSubmit,
     formState: { errors, isSubmitting, isDirty },
   } = useForm({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schemaFor(profile?.date_of_birth)),
     values: {
       mobile: profile?.mobile ?? '',
       civil_status: profile?.civil_status ?? '',
@@ -62,6 +76,15 @@ export default function Profile() {
   async function onSubmit(values) {
     setSaveError(null)
     setSaved(false)
+
+    // The resolver already covers this. Repeated here so the rule does not
+    // depend on the resolver having seen the loaded profile.
+    const residency = residencyProblem(values.years_of_residency, profile?.date_of_birth)
+    if (residency) {
+      setSaveError(residency)
+      return
+    }
+
     try {
       // role, status and resident_id are deliberately absent. The
       // guard_profile_columns trigger would reject them anyway.
