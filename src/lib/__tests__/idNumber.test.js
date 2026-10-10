@@ -118,20 +118,45 @@ test('a confident, different number is a mismatch and must block', () => {
 
 // --------------------------------------------------- OCR ambiguity: 0/O, 1/I
 
-test('0/O and 1/I confusions are treated as the same number', () => {
+test('a confusable fold is NO LONGER enough to call it a match', () => {
+  // foldConfusables still exists -- it collapses near-duplicate readings when
+  // counting how many distinct candidates OCR produced -- but it may not
+  // decide a match.
   assert.equal(foldConfusables('O1I0'), '0110')
-  // Typed with letters, printed as digits.
+
+  // Typed with letters, printed as digits. This used to return
+  // { outcome: 'match', how: 'lookalike' }. It must not any more: folding
+  // letters onto digits accepts genuinely different numbers, and a
+  // verification gate cannot do that.
   const r = compareIdNumber({
     entered: 'PO1234I7A',
     ocr: conf('PASSPORT\nP01234 17A\nREPUBLIC OF THE PHILIPPINES'),
     idType: 'Passport',
   })
-  assert.equal(r.outcome, 'match')
-  assert.equal(r.how, 'lookalike')
+  assert.notEqual(r.outcome, 'match')
+  assert.equal(r.how, undefined)
 })
 
-test('a lookalike fold only ever softens a mismatch, never creates one', () => {
-  // Genuinely different digits must still be a mismatch after folding.
+test('two GENUINELY different numbers that fold alike are never a match', () => {
+  // The reason the lookalike path had to go. Each pair is two different ID
+  // numbers that foldConfusables collapses onto a single value.
+  const pairs = [
+    ['S1234567', '51234567'],
+    ['B1234567', '81234567'],
+    ['G600001', '6600001'],
+  ]
+  for (const [typed, printed] of pairs) {
+    assert.equal(foldConfusables(typed), foldConfusables(printed), 'the pair folds alike')
+    const r = compareIdNumber({
+      entered: typed,
+      ocr: conf('PASSPORT\n' + printed + '\nREPUBLIC OF THE PHILIPPINES'),
+      idType: 'Passport',
+    })
+    assert.notEqual(r.outcome, 'match', typed + ' must not match ' + printed)
+  }
+})
+
+test('genuinely different digits are a mismatch, with or without folding', () => {
   const r = compareIdNumber({
     entered: '1234-5678-9012-3456',
     ocr: conf(philsysText('1234 5678 9012 3457')),

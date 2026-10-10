@@ -64,11 +64,14 @@ export function normalizeIdNumber(value) {
 /**
  * Characters OCR habitually confuses, folded onto one representative each.
  *
- * This is only ever a second opinion, after an exact comparison has already
- * failed. Folding makes the comparison more forgiving and never less: its
- * only possible effect is to turn a would-be mismatch into a match. That is
- * the right way to err -- a wrong "match" leaves the secretary to catch it,
- * while a wrong "mismatch" turns a real resident away at the door.
+ * NOT used to decide a match. It was, and that was wrong: folding letters onto
+ * digits accepts genuinely different numbers as equal, which is the opposite
+ * of what a verification gate is for.
+ *
+ * Its one remaining job is collapsing near-duplicate READINGS of the same
+ * document when counting how many distinct candidates OCR produced. There,
+ * treating "S1234" and "51234" as one reading only ever makes the outcome
+ * more cautious, never more permissive.
  */
 const CONFUSABLE = { O: '0', Q: '0', D: '0', I: '1', L: '1', Z: '2', S: '5', B: '8', G: '6' }
 
@@ -195,16 +198,19 @@ export function compareIdNumber({
     return { outcome: 'match', how: 'exact', confidence: confidenceFor(exact.value, tokens, overall) }
   }
 
-  // Then the same number, allowing for characters OCR confuses.
-  const typedFolded = foldConfusables(typed)
-  const lookalike = candidates.find((c) => foldConfusables(c.value) === typedFolded)
-  if (lookalike) {
-    return {
-      outcome: 'match',
-      how: 'lookalike',
-      confidence: confidenceFor(lookalike.value, tokens, overall),
-    }
-  }
+  // There is deliberately NO second, more forgiving comparison here.
+  //
+  // Folding OCR's confusable characters (O->0, I->1, S->5, B->8 ...) used to
+  // be tried next, and it would turn a would-be mismatch into a match. That
+  // is error-correction, not formatting: S1234567 and 51234567 fold to the
+  // same value, and so do B1234567 and 81234567, but they are different ID
+  // numbers. Only normalisation that cannot change which number is meant --
+  // case, spaces, hyphens, stripped in normalizeIdNumber -- is applied.
+  //
+  // The cost is real and accepted: an ID whose digit OCR reads as a letter no
+  // longer matches, and the resident is held on the step rather than waved
+  // through. foldConfusables is still used below, where collapsing near
+  // duplicates only ever makes the outcome more cautious.
 
   // Nothing matched. Only a confident, plausible, unambiguous reading may block.
   const plausible = candidates.filter((c) => c.plausible)

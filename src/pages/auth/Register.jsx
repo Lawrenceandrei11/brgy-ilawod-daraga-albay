@@ -212,8 +212,9 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
     // after the resident had already moved on. The button is disabled while
     // this is true; this guard is what makes that more than cosmetic.
     if (!idCheck.ready) return
-    // A confident mismatch is the only outcome that stops the resident here.
-    // Unreadable, faint and ambiguous reads all continue to the secretary.
+    // Only an exact match gets past this step. Every other outcome -- a
+    // mismatch, an unreadable number, a PDF that would not render, an engine
+    // that could not run -- stops the resident here. See lib/idCheck.js.
     if (idCheck.blocking) return
     onNext(values)
   }
@@ -373,7 +374,7 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
                     name={
                       idCheck.status === 'match'
                         ? 'check'
-                        : idCheck.status === 'mismatch'
+                        : idCheck.blocking
                           ? 'alert'
                           : idCheck.status === 'reading'
                             ? 'clock'
@@ -451,10 +452,14 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
             <Button
               type="submit"
               auto
-              iconRight={idCheck.ready ? 'arrow' : undefined}
-              disabled={!idCheck.ready}
+              iconRight={idCheck.ready && !idCheck.blocking ? 'arrow' : undefined}
+              disabled={!idCheck.ready || idCheck.blocking}
             >
-              {idCheck.ready ? 'Continue to household details' : 'Checking your ID…'}
+              {!idCheck.ready
+                ? 'Checking your ID…'
+                : idCheck.blocking
+                  ? 'Check the ID details to continue'
+                  : 'Continue to household details'}
             </Button>
           </div>
         </form>

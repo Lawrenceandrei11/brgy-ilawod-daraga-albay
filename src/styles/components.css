@@ -3838,9 +3838,15 @@ object.idview {
   color: var(--danger-600);
   font-weight: 600;
 }
+/* Every outcome but a match keeps the resident on the step, so they all read
+   as errors. Nothing here is a pass, and nothing here is merely advisory. */
 .idcheck-uncertain,
-.idcheck-failed {
-  color: var(--ink-600);
+.idcheck-too-short,
+.idcheck-unsupported,
+.idcheck-failed,
+.idcheck-pdf-manual {
+  color: var(--danger-600);
+  font-weight: 600;
 }
 
 /* The uploaded ID on the summary step, beside the details it was read from. */
