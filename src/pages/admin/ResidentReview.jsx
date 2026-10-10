@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -26,6 +26,10 @@ export default function ResidentReview() {
   const [error, setError] = useState(null)
   const [done, setDone] = useState(null)
   const [idUrl, setIdUrl] = useState(null)
+  const [idIsPdf, setIdIsPdf] = useState(false)
+  const [idExpanded, setIdExpanded] = useState(false)
+  const idCloseRef = useRef(null)
+  const idOpenRef = useRef(null)
 
   const { data: p, isLoading } = useQuery({
     queryKey: ['admin-resident', id],
@@ -66,6 +70,9 @@ export default function ResidentReview() {
   useEffect(() => {
     let cancelled = false
     if (!p?.valid_id_path) return undefined
+    // Registration names the file after the upload's own extension, so the
+    // path says which of the four accepted types this is.
+    setIdIsPdf(/\.pdf$/i.test(p.valid_id_path))
     supabase.storage
       .from('valid-ids')
       .createSignedUrl(p.valid_id_path, 300)
@@ -76,6 +83,34 @@ export default function ResidentReview() {
       cancelled = true
     }
   }, [p?.valid_id_path])
+
+  // The expanded ID viewer. It shows the same signed URL the panel already
+  // holds -- no second request, no longer-lived link -- so it expires with
+  // everything else after five minutes.
+  //
+  // Escape closes it, the page behind it does not scroll, focus moves to the
+  // close button on open and returns to the trigger on close, and Tab cannot
+  // wander out of the dialog into the page underneath.
+  useEffect(() => {
+    if (!idExpanded) return undefined
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIdExpanded(false)
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        idCloseRef.current?.focus()
+      }
+    }
+    const scrollY = window.scrollY
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    idCloseRef.current?.focus()
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+      window.scrollTo(0, scrollY)
+      idOpenRef.current?.focus()
+    }
+  }, [idExpanded])
 
   async function approve() {
     setBusy('approve')
@@ -282,11 +317,40 @@ export default function ResidentReview() {
             <h3 style={{ fontSize: 17, marginBottom: 14 }}>ID photograph</h3>
             {idUrl ? (
               <>
-                <img
-                  src={idUrl}
-                  alt="The resident's uploaded valid ID"
-                  style={{ width: '100%', borderRadius: 'var(--r-md)', border: '1px solid var(--ink-200)', marginBottom: 12 }}
-                />
+                {/* Registration accepts a PDF as well as an image, and a PDF in
+                    an <img> is a broken icon -- which would mean approving a
+                    registration having never seen the document. */}
+                {idIsPdf ? (
+                  <object
+                    data={idUrl}
+                    type="application/pdf"
+                    className="idview"
+                    aria-label="The resident's uploaded valid ID"
+                  >
+                    <p style={{ fontSize: 13.5, color: 'var(--ink-500)', padding: 16 }}>
+                      This browser will not display the PDF in this panel. Use
+                      &ldquo;View larger&rdquo; below to open it in the full-size viewer.
+                    </p>
+                  </object>
+                ) : (
+                  <img src={idUrl} alt="The resident's uploaded valid ID" className="idview" />
+                )}
+
+                {/* An ID number is often too small to read in the panel, so it
+                    opens larger -- in the page, not a new tab. A new tab would
+                    put the signed URL in the address bar and the browser's
+                    history, where it can be read, copied or left on screen. */}
+                <button
+                  type="button"
+                  ref={idOpenRef}
+                  className="idview-open"
+                  onClick={() => setIdExpanded(true)}
+                  aria-haspopup="dialog"
+                >
+                  <Icon name="search" size="sm" />
+                  View larger{idIsPdf ? ' (PDF)' : ''}
+                </button>
+
                 <p style={{ fontSize: 12.5, color: 'var(--ink-400)' }}>
                   Held in a private bucket. This link is signed and expires in five minutes.
                 </p>
@@ -358,6 +422,62 @@ export default function ResidentReview() {
           </Card>
         </aside>
       </div>
+
+      {/* The ID, larger, without the signed URL ever reaching the address bar.
+          Same link the panel is already using, same five-minute expiry. */}
+      {idExpanded && idUrl && (
+        <div
+          className="idmodal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Valid ID of ${p.full_name}`}
+          onClick={(e) => {
+            // Only the backdrop closes; a click on the document itself must not.
+            if (e.target === e.currentTarget) setIdExpanded(false)
+          }}
+        >
+          <div className="idmodal-box">
+            <div className="idmodal-bar">
+              <b>
+                {p.full_name} · {p.valid_id_type || 'Valid ID'}
+                {p.valid_id_number ? ` · ${p.valid_id_number}` : ''}
+              </b>
+              <button
+                type="button"
+                ref={idCloseRef}
+                className="idmodal-close"
+                onClick={() => setIdExpanded(false)}
+                aria-label="Close the ID viewer"
+              >
+                <Icon name="x" />
+              </button>
+            </div>
+
+            {idIsPdf ? (
+              <object
+                data={idUrl}
+                type="application/pdf"
+                className="idmodal-doc"
+                aria-label={`Valid ID of ${p.full_name}, PDF`}
+              >
+                <p style={{ fontSize: 14, color: 'var(--ink-500)', padding: 24 }}>
+                  This browser cannot display PDFs. The ID type and number are shown
+                  above. To see the document itself, open this page in a browser that
+                  displays PDFs, or ask the resident to bring the ID to the barangay hall.
+                </p>
+              </object>
+            ) : (
+              <img src={idUrl} alt={`Valid ID of ${p.full_name}`} className="idmodal-doc" />
+            )}
+
+            <p className="idmodal-foot">
+              Held in a private bucket. This view uses the same signed link as the
+              panel and expires five minutes after it was issued. Press
+              <kbd>Esc</kbd> to close.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
