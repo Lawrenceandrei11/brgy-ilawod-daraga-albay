@@ -150,6 +150,17 @@ export default function Login() {
             {...register('password')}
           />
 
+          {/* Sits with the password field, where someone who has just
+              failed to remember it is already looking. */}
+          <div style={{ marginTop: -8 }}>
+            <Link
+              to="/forgot-password"
+              style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--primary-700)' }}
+            >
+              Forgot your password?
+            </Link>
+          </div>
+
           <Button type="submit" block icon="lock" disabled={isSubmitting}>
             {isSubmitting ? 'Signing you in…' : 'Sign in'}
           </Button>

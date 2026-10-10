@@ -11,6 +11,8 @@ import AdminLayout from './components/layout/AdminLayout'
 
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
+import ForgotPassword from './pages/auth/ForgotPassword'
+import ResetPassword from './pages/auth/ResetPassword'
 import Dashboard from './pages/resident/Dashboard'
 import Requests from './pages/resident/Requests'
 import NewRequest from './pages/resident/NewRequest'
@@ -119,6 +121,22 @@ export default function App() {
             </RedirectIfSignedIn>
           }
         />
+        <Route
+          path="/forgot-password"
+          element={
+            <RedirectIfSignedIn>
+              <ForgotPassword />
+            </RedirectIfSignedIn>
+          }
+        />
+        {/* Deliberately NOT wrapped in RedirectIfSignedIn. The emailed link
+            carries a recovery token that the Supabase client turns into a
+            real session before this route renders, so the resident arrives
+            already signed in. Guarding it the way /login is guarded would
+            send them to the dashboard and they could never reach the form.
+            The page gates itself on the PASSWORD_RECOVERY event instead, so
+            an ordinary signed-in session cannot reach the form. */}
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* ---------- resident portal ---------- */}
         <Route
