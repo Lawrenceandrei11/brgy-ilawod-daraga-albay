@@ -44,3 +44,8 @@ supabase/.branches
 # copies uploaded to Supabase Storage, which announcements.cover_path points
 # at; these are the files they were made from.
 announcement-covers/
+
+# OCR runtime, copied out of node_modules by scripts/sync-ocr-assets.mjs.
+# ~13 MB of binaries, reproducible with `npm run ocr:assets`, so they are
+# served by the app but not kept in git.
+public/ocr/

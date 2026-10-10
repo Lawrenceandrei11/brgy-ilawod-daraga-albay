@@ -3811,3 +3811,86 @@ object.idview {
     font-size: 13px;
   }
 }
+
+/* ------------------------------------------------------------------
+   The ID number check on the registration form
+   ------------------------------------------------------------------ */
+
+/* One line under the ID number field. It reports what the uploaded document
+   says about the number typed -- not whether the ID is genuine. */
+.idcheck {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+.idcheck .ic {
+  flex: none;
+  margin-top: 2px;
+}
+.idcheck-match {
+  color: var(--success-600);
+}
+.idcheck-mismatch {
+  color: var(--danger-600);
+  font-weight: 600;
+}
+.idcheck-uncertain,
+.idcheck-failed {
+  color: var(--ink-600);
+}
+
+/* The uploaded ID on the summary step, beside the details it was read from. */
+.summary-id {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-md);
+  background: var(--ink-50);
+  object-fit: contain;
+}
+object.summary-id {
+  height: 260px;
+}
+.summary-idnote {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--ink-400);
+}
+
+/* Each block of the summary gets its own way back to the step that made it. */
+.summary-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-700);
+}
+.summary-edit:hover {
+  text-decoration: underline;
+}
+.summary-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.summary-head h3 {
+  font-size: 16px;
+}
+
+@media (max-width: 700px) {
+  object.summary-id,
+  .summary-id {
+    max-height: 200px;
+  }
+  object.summary-id {
+    height: 200px;
+  }
+}

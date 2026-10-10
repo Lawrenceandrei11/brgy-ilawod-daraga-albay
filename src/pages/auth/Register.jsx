@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,6 +10,10 @@ import { Icon } from '../../components/Icon'
 import { longDate } from '../../lib/formatters'
 import { MainLogo } from '../../components/MainLogo'
 import { optionalNumber } from '../../lib/formFields'
+import { ID_ACCEPT_ATTR, validateIdFile } from '../../lib/idFile'
+import { idCheckMessage } from '../../lib/idCheck'
+import { normalizeIdNumber } from '../../lib/idNumber'
+import { useIdNumberCheck } from '../../hooks/useIdNumberCheck'
 import {
   MIN_REGISTRATION_AGE,
   isOldEnoughToRegister,
@@ -85,6 +89,9 @@ export default function Register() {
   const [data, setData] = useState({})
   const [idFile, setIdFile] = useState(null)
   const [submitError, setSubmitError] = useState(null)
+  // Which confident match has already carried the resident forward. Kept here
+  // so it survives StepOne unmounting and remounting.
+  const autoAdvancedRef = useRef(null)
 
   const goto = (n) => {
     setStep(n)
@@ -131,6 +138,7 @@ export default function Register() {
               }}
               idFile={idFile}
               setIdFile={setIdFile}
+              autoAdvancedRef={autoAdvancedRef}
             />
           )}
 
@@ -150,6 +158,7 @@ export default function Register() {
               data={data}
               idFile={idFile}
               onBack={() => goto(2)}
+              onEdit={goto}
               onError={setSubmitError}
               onDone={() => navigate('/app', { replace: true })}
             />
@@ -162,24 +171,31 @@ export default function Register() {
 
 /* ------------------------------------------------------------------ */
 
-function StepOne({ defaults, onNext, idFile, setIdFile }) {
+function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
   const [fileError, setFileError] = useState(null)
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm({ resolver: zodResolver(step1Schema), defaultValues: defaults })
+
+  // The number and the type are watched so the check re-decides as they are
+  // edited. Only a change of FILE re-runs OCR; see useIdNumberCheck.
+  const typedNumber = watch('valid_id_number')
+  const typedType = watch('valid_id_type')
+  const idCheck = useIdNumberCheck({ file: idFile, entered: typedNumber, idType: typedType })
+  const checkMessage = idCheckMessage(idCheck)
 
   function chooseFile(e) {
     const file = e.target.files?.[0]
     setFileError(null)
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      setFileError('That file is larger than 5 MB. Try a smaller photo.')
-      return
-    }
-    if (!/^(image\/(png|jpeg|webp)|application\/pdf)$/.test(file.type)) {
-      setFileError('Upload a PNG, JPEG, WEBP or PDF.')
+    // Same limits and wording as before, now shared with the storage bucket
+    // and the tests. See lib/idFile.js.
+    const problem = validateIdFile(file)
+    if (problem) {
+      setFileError(problem)
       return
     }
     setIdFile(file)
@@ -190,8 +206,31 @@ function StepOne({ defaults, onNext, idFile, setIdFile }) {
       setFileError('A photo of your valid ID is required.')
       return
     }
+    // A confident mismatch is the only outcome that stops the resident here.
+    // Unreadable, faint and ambiguous reads all continue to the secretary.
+    if (idCheck.blocking) return
     onNext(values)
   }
+
+  // After a confident match there is nothing left to decide on this step, so
+  // it carries the resident forward rather than making them press Continue
+  // again. Submission still happens only on the summary, by hand.
+  //
+  // Once per match, though. The ref lives in the parent and outlives this
+  // step, so coming back from the summary to change something does not get
+  // bounced straight forward again by the match that is already on file.
+  // Editing the number or swapping the document makes a new key, and the
+  // fresh match then advances as before.
+  const advance = handleSubmit(submit)
+  const matchKey =
+    idFile && idCheck.status === 'match'
+      ? `${idFile.name}:${idFile.size}:${normalizeIdNumber(typedNumber)}`
+      : null
+  useEffect(() => {
+    if (!matchKey || autoAdvancedRef.current === matchKey) return
+    autoAdvancedRef.current = matchKey
+    advance()
+  }, [matchKey, advance, autoAdvancedRef])
 
   return (
     <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
@@ -319,6 +358,26 @@ function StepOne({ defaults, onNext, idFile, setIdFile }) {
                 error={errors.valid_id_number?.message}
                 {...register('valid_id_number')}
               />
+              {checkMessage && !errors.valid_id_number && (
+                <span
+                  className={`idcheck idcheck-${idCheck.status}`}
+                  role={idCheck.blocking ? 'alert' : 'status'}
+                >
+                  <Icon
+                    name={
+                      idCheck.status === 'match'
+                        ? 'check'
+                        : idCheck.status === 'mismatch'
+                          ? 'alert'
+                          : idCheck.status === 'reading'
+                            ? 'clock'
+                            : 'info'
+                    }
+                    size="sm"
+                  />
+                  <span>{checkMessage}</span>
+                </span>
+              )}
             </div>
 
             <div className="span-2">
@@ -353,7 +412,7 @@ function StepOne({ defaults, onNext, idFile, setIdFile }) {
                     <input
                       id="id-upload"
                       type="file"
-                      accept="image/png,image/jpeg,image/webp,application/pdf"
+                      accept={ID_ACCEPT_ATTR}
                       onChange={chooseFile}
                       style={{ display: 'none' }}
                     />
@@ -539,7 +598,24 @@ function StepTwo({ defaults, onBack, onNext }) {
 
 /* ------------------------------------------------------------------ */
 
-function StepThree({ data, idFile, onBack, onError, onDone }) {
+function StepThree({ data, idFile, onBack, onEdit, onError, onDone }) {
+  // A local preview of the chosen file, revoked when it changes or the step
+  // unmounts so the blob is not left alive in the tab.
+  const [idPreview, setIdPreview] = useState(null)
+  const idIsPdf = idFile?.type === 'application/pdf'
+  useEffect(() => {
+    if (!idFile) {
+      setIdPreview(null)
+      return undefined
+    }
+    const url = URL.createObjectURL(idFile)
+    setIdPreview(url)
+    return () => {
+      URL.revokeObjectURL(url)
+      setIdPreview(null)
+    }
+  }, [idFile])
+
   const [consent, setConsent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [pendingActivation, setPendingActivation] = useState(false)
@@ -549,12 +625,12 @@ function StepThree({ data, idFile, onBack, onError, onDone }) {
     // can walk back to step 1 and change their date of birth after step 2 has
     // passed. Nothing is created until the pair agrees.
     if (!isOldEnoughToRegister(data.date_of_birth)) {
-      onError(`Residents must be  or older to register. Check the date of birth in step 1.`)
+      onError(`Residents must be ${MIN_AGE} or older to register. Check the date of birth in step 1.`)
       return
     }
     const residency = residencyProblem(data.years_of_residency, data.date_of_birth)
     if (residency) {
-      onError(`. Check the date of birth in step 1 and the years of residency in step 2.`)
+      onError(`${residency}. Check the date of birth in step 1 and the years of residency in step 2.`)
       return
     }
 
@@ -658,7 +734,7 @@ function StepThree({ data, idFile, onBack, onError, onDone }) {
     )
   }
 
-  const rows = [
+  const personalRows = [
     ['Full legal name', data.full_name],
     ['Date of birth', data.date_of_birth ? longDate(data.date_of_birth) : '—'],
     ['Sex', data.sex],
@@ -667,12 +743,36 @@ function StepThree({ data, idFile, onBack, onError, onDone }) {
     ['Email address', data.email],
     ['Valid ID', `${data.valid_id_type} · ${data.valid_id_number}`],
     ['ID photograph', idFile?.name ?? 'Not attached'],
+  ]
+  const householdRows = [
     ['Purok', `Purok ${data.purok}`],
     ['Address', data.address_line],
     ['Years of residency', String(data.years_of_residency)],
     ['Head of household', data.household_head || 'Self'],
     ['People in household', data.household_size ? String(data.household_size) : 'Not given'],
   ]
+
+  const Rows = ({ rows }) => (
+    <dl style={{ margin: 0 }}>
+      {rows.map(([label, value]) => (
+        <div
+          key={label}
+          className="row"
+          style={{
+            gap: 16,
+            padding: '13px 0',
+            borderBottom: '1px solid var(--ink-100)',
+            alignItems: 'flex-start',
+          }}
+        >
+          <dt style={{ fontSize: 13, color: 'var(--ink-400)', width: 190, flex: 'none', fontWeight: 600 }}>
+            {label}
+          </dt>
+          <dd style={{ margin: 0, fontSize: 14.5, color: 'var(--ink-800)' }}>{value || '—'}</dd>
+        </div>
+      ))}
+    </dl>
+  )
 
   return (
     <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
@@ -684,25 +784,45 @@ function StepThree({ data, idFile, onBack, onError, onDone }) {
           clearance back for correction, so it is worth a second read.
         </p>
 
-        <dl style={{ margin: 0 }}>
-          {rows.map(([label, value]) => (
-            <div
-              key={label}
-              className="row"
-              style={{
-                gap: 16,
-                padding: '13px 0',
-                borderBottom: '1px solid var(--ink-100)',
-                alignItems: 'flex-start',
-              }}
-            >
-              <dt style={{ fontSize: 13, color: 'var(--ink-400)', width: 190, flex: 'none', fontWeight: 600 }}>
-                {label}
-              </dt>
-              <dd style={{ margin: 0, fontSize: 14.5, color: 'var(--ink-800)' }}>{value || '—'}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="summary-head">
+          <h3>Personal details and ID</h3>
+          <button type="button" className="summary-edit" onClick={() => onEdit?.(1)} disabled={busy}>
+            <Icon name="arrow" size="sm" style={{ transform: 'rotate(180deg)' }} />
+            Edit
+          </button>
+        </div>
+        <Rows rows={personalRows} />
+
+        {/* The ID as uploaded, read straight from the file the resident chose.
+            A local blob URL: nothing has been uploaded at this point, so there
+            is no bucket object and no signed link to expire. */}
+        {idPreview && (
+          <div style={{ marginTop: 18 }}>
+            {idIsPdf ? (
+              <object data={idPreview} type="application/pdf" className="summary-id" aria-label="The valid ID you uploaded">
+                <p style={{ fontSize: 13.5, color: 'var(--ink-500)', padding: 16 }}>
+                  This browser will not preview the PDF. The file attached is{' '}
+                  <b>{idFile?.name}</b>.
+                </p>
+              </object>
+            ) : (
+              <img src={idPreview} alt="The valid ID you uploaded" className="summary-id" />
+            )}
+            <p className="summary-idnote">
+              This stays on your device until you submit. It is then stored privately and seen only
+              by you and the barangay staff.
+            </p>
+          </div>
+        )}
+
+        <div className="summary-head" style={{ marginTop: 28 }}>
+          <h3>Household and address</h3>
+          <button type="button" className="summary-edit" onClick={() => onEdit?.(2)} disabled={busy}>
+            <Icon name="arrow" size="sm" style={{ transform: 'rotate(180deg)' }} />
+            Edit
+          </button>
+        </div>
+        <Rows rows={householdRows} />
 
         <div style={{ marginTop: 26 }}>
           <Check
