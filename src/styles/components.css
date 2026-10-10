@@ -3947,3 +3947,198 @@ object.summary-id {
   padding-top: 14px;
   border-top: 1px solid var(--ink-100);
 }
+
+/* ------------------------------------------------------------------
+   Printable barangay documents
+   ------------------------------------------------------------------ */
+
+.docpage {
+  padding-top: 24px;
+  padding-bottom: 48px;
+}
+.docbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.docnote {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+
+/* The sheet itself. Sized to A4 so what is on screen is what prints. */
+.doc {
+  max-width: 210mm;
+  min-height: 250mm;
+  margin: 0 auto;
+  padding: 18mm 16mm;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-md);
+  color: #111;
+  font-size: 12pt;
+  line-height: 1.6;
+}
+.doc-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #111;
+}
+.doc-seal {
+  width: 74px;
+  height: 74px;
+  flex: none;
+}
+.doc-republic,
+.doc-office {
+  font-size: 11pt;
+  margin: 0;
+}
+.doc-brgy {
+  margin: 2px 0;
+  font-size: 15pt;
+  font-weight: 700;
+}
+.doc-title {
+  margin: 26px 0 10px;
+  font-size: 17pt;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.06em;
+}
+
+/* Deliberately loud, and deliberately printed as well as shown. A draft that
+   loses its mark on paper is the whole hazard.
+
+   The mark never depends on colour to be understood: the words themselves say
+   DRAFT, and the dashed border survives a greyscale or ink-saving print. The
+   colour-adjust hints only ask the browser not to drop the red when it is
+   stripping backgrounds. */
+.doc-draft {
+  margin: 0 auto 22px;
+  padding: 6px 10px;
+  max-width: max-content;
+  border: 1.5px dashed var(--danger-600);
+  border-radius: var(--r-sm);
+  color: var(--danger-600);
+  font-size: 9.5pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.doc-subject {
+  margin: 0 0 16px;
+  font-size: 14pt;
+  font-weight: 700;
+  text-align: center;
+}
+.doc-statement {
+  margin: 0 0 20px;
+  text-align: justify;
+}
+.doc-facts {
+  margin: 0 0 32px;
+}
+.doc-facts > div {
+  display: flex;
+  gap: 14px;
+  padding: 5px 0;
+  border-bottom: 1px dotted var(--ink-200);
+}
+.doc-facts dt {
+  width: 200px;
+  flex: none;
+  font-weight: 600;
+}
+.doc-facts dd {
+  margin: 0;
+}
+.doc-sign {
+  margin: 44px 0 0 auto;
+  width: 70mm;
+  text-align: center;
+}
+.doc-signline {
+  border-bottom: 1px solid #111;
+  height: 34px;
+}
+.doc-signname {
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+.doc-signrole {
+  margin: 2px 0 0;
+  font-size: 10.5pt;
+}
+.doc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 40px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ink-200);
+  font-size: 9pt;
+  color: #333;
+}
+
+/* What actually comes out of the printer: the sheet, and nothing else. */
+@media print {
+  /* These are the class names the admin shell actually uses -- .side for the
+     sidebar and .topbar for the header, not the .sidebar/.adminbar this block
+     first guessed at. Getting them wrong does not fail loudly: the page still
+     prints, with the navigation down the left of the paper. */
+  .noprint,
+  .side,
+  .topbar,
+  .side-scrim,
+  .side-toggle,
+  .site-nav,
+  nav,
+  footer.site-foot {
+    display: none !important;
+  }
+  /* .dash is a two-column grid (sidebar | content). With the sidebar hidden
+     the document would otherwise stay squeezed into the second column. */
+  .dash {
+    display: block !important;
+  }
+  body,
+  .wrap,
+  .dash,
+  .dash-body,
+  .docpage {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .doc {
+    max-width: none;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .doc-facts > div,
+  .doc-sign {
+    break-inside: avoid;
+  }
+  /* The draft mark is not optional output. Stated explicitly so no future
+     ink-saving rule can quietly drop it. */
+  .doc-draft {
+    display: block !important;
+    border-color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+}

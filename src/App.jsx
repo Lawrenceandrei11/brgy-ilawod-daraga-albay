@@ -33,6 +33,7 @@ import Privacy from './pages/public/Privacy'
 import AdminDashboard from './pages/admin/Dashboard'
 import RequestQueue from './pages/admin/RequestQueue'
 import RequestReview from './pages/admin/RequestReview'
+import RequestPrint from './pages/admin/RequestPrint'
 import Residents from './pages/admin/Residents'
 import ResidentReview from './pages/admin/ResidentReview'
 import BlotterAdmin from './pages/admin/BlotterAdmin'
@@ -163,6 +164,7 @@ export default function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="requests" element={<RequestQueue />} />
           <Route path="requests/:ref" element={<RequestReview />} />
+          <Route path="requests/:ref/print" element={<RequestPrint />} />
           <Route path="residents" element={<Residents />} />
           <Route path="residents/:id" element={<ResidentReview />} />
           <Route path="blotter" element={<BlotterAdmin />} />

@@ -11,6 +11,7 @@ import { REQUEST_STATUS, allowedNext, whoseStep, canRecordPayment } from '../../
 import { smsStatusLabel } from '../../lib/sms'
 import { longDate, peso, shortDate, timeOnly } from '../../lib/formatters'
 import { SERVICE_FIELDS } from '../../lib/serviceFields'
+import { canPrint } from '../../lib/documentTemplate'
 
 /**
  * Where a request actually moves through its lifecycle.
@@ -257,6 +258,18 @@ export default function RequestReview() {
               <Notice tone="quiet" icon="check" title="This request is finished">
                 Released requests cannot be moved again. The history below is the permanent record.
               </Notice>
+            )}
+
+            {/* Printing is a read-only view of what is already on the record.
+                It moves nothing and needs no permission beyond being staff,
+                but a document only exists once the Punong Barangay has
+                approved it -- hence canPrint(). */}
+            {canPrint(r) && (
+              <div style={{ marginTop: 16 }}>
+                <Button to={`/admin/requests/${ref}/print`} variant="secondary" auto icon="print">
+                  Open printable document
+                </Button>
+              </div>
             )}
           </Card>
 
