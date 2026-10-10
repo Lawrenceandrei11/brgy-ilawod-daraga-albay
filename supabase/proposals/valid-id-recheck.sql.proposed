@@ -1,0 +1,213 @@
+-- ============================================================
+-- PROPOSAL -- NOT APPLIED, AND DELIBERATELY NOT IN migrations/
+--
+-- Revision 4.
+--   rev 1  the browser set valid_id_replaced_at -- defeatable, see below
+--   rev 2  a second BEFORE UPDATE trigger set it -- correct, but the two
+--          triggers had to fire in the right order and only did so because
+--          of how they happened to be named
+--   rev 3  one trigger. The stamping lives inside guard_profile_columns(),
+--          which already runs BEFORE UPDATE on this table, so there is no
+--          ordering to get wrong. Also covers valid_id_number and
+--          valid_id_type, not just the file.
+--   rev 4  clock_timestamp() instead of now(). now() is frozen for a whole
+--          transaction, so a replace and a review landing in one transaction
+--          would tie, and the queue predicate (reviewed < replaced) would
+--          silently miss the replacement. Caught by the proof run below.
+--
+-- Why rev 1 was wrong: a resident may run
+--   update profiles set valid_id_path = '...'
+-- and nothing else. Confirmed against the live schema. If the client owns the
+-- timestamp, it can simply be omitted, and the replacement never reaches the
+-- queue. Backdating hides it equally well. The database must own it.
+--
+-- Why rev 2 was fragile: same-timing triggers fire in NAME order.
+-- profiles_guard_columns sorts before profiles_stamp_valid_id, so the guard
+-- rejected a forged value before the stamp wrote the real one. Had the stamp
+-- run first, the guard would have seen the column change and rejected EVERY
+-- legitimate replacement. Correct by coincidence of naming is not correct.
+--
+-- Design
+-- ------
+--   valid_id_replaced_at   stamped by the database when the resident changes
+--                          any part of their identity document
+--   valid_id_reviewed_at   stamped only by staff, through an RPC
+--
+-- "Needs checking" is derived, never stored, so it cannot drift:
+--
+--   valid_id_replaced_at is not null
+--     and (valid_id_reviewed_at is null or valid_id_reviewed_at < valid_id_replaced_at)
+--
+-- status, resident_id, approved_by and approved_at are never written. An
+-- approved resident stays approved, keeps their Resident ID, and keeps every
+-- service, while the document waits in a staff queue.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. Columns and the queue index
+-- ------------------------------------------------------------
+alter table public.profiles
+  add column if not exists valid_id_replaced_at timestamptz,
+  add column if not exists valid_id_reviewed_at timestamptz;
+
+comment on column public.profiles.valid_id_replaced_at is
+  'Set by guard_profile_columns() when a resident changes valid_id_path, _number or _type. Null means the ID is the one from registration.';
+comment on column public.profiles.valid_id_reviewed_at is
+  'Set only by mark_valid_id_reviewed(). Earlier than valid_id_replaced_at means the document needs checking.';
+
+create index if not exists profiles_valid_id_needs_check
+  on public.profiles (valid_id_replaced_at)
+  where valid_id_replaced_at is not null;
+
+
+-- ------------------------------------------------------------
+-- 2. guard_profile_columns() -- REPLACED
+--
+-- Compare against the live definition before applying. Every existing rule is
+-- preserved verbatim; the additions are marked NEW. The only structural
+-- change is that the staff early-return now stamps a staff-made document
+-- change before returning.
+--
+-- LIVE DEFINITION AT THE TIME OF WRITING (for side-by-side review):
+--
+--   begin
+--     if is_staff() then
+--       return new;
+--     end if;
+--
+--     if new.role is distinct from old.role
+--        or new.status is distinct from old.status
+--        or new.resident_id is distinct from old.resident_id
+--        or new.approved_by is distinct from old.approved_by
+--        or new.approved_at is distinct from old.approved_at then
+--       raise exception 'Only barangay staff may change role, status or resident ID';
+--     end if;
+--
+--     return new;
+--   end;
+-- ------------------------------------------------------------
+create or replace function public.guard_profile_columns()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_doc_changed boolean;
+begin
+  -- NEW: any part of the identity document, not just the file. Changing the
+  -- claimed ID number without uploading anything is still a change staff
+  -- should see.
+  v_doc_changed :=
+       new.valid_id_path   is distinct from old.valid_id_path
+    or new.valid_id_number is distinct from old.valid_id_number
+    or new.valid_id_type   is distinct from old.valid_id_type;
+
+  if is_staff() then
+    -- NEW: staff who change the document are looking at it as they do so, so
+    -- it is replaced and reviewed in the same breath and never lands in their
+    -- own queue. If they are explicitly setting reviewed_at (the RPC below),
+    -- leave their value alone.
+    if v_doc_changed and new.valid_id_reviewed_at is not distinct from old.valid_id_reviewed_at then
+      new.valid_id_replaced_at := clock_timestamp();
+      new.valid_id_reviewed_at := clock_timestamp();
+    end if;
+    return new;
+  end if;
+
+  -- EXISTING RULE, unchanged.
+  if new.role is distinct from old.role
+     or new.status is distinct from old.status
+     or new.resident_id is distinct from old.resident_id
+     or new.approved_by is distinct from old.approved_by
+     or new.approved_at is distinct from old.approved_at then
+    raise exception 'Only barangay staff may change role, status or resident ID';
+  end if;
+
+  -- NEW: neither timestamp is the resident's to write. These checks run
+  -- BEFORE the stamp below, so a resident supplying a value is rejected
+  -- rather than quietly overwritten.
+  if new.valid_id_reviewed_at is distinct from old.valid_id_reviewed_at then
+    raise exception 'Only barangay staff may mark a valid ID as reviewed';
+  end if;
+  if new.valid_id_replaced_at is distinct from old.valid_id_replaced_at then
+    raise exception 'valid_id_replaced_at is set automatically';
+  end if;
+
+  -- NEW: the stamp itself. Nothing the client sends can reach this value.
+  if v_doc_changed then
+    new.valid_id_replaced_at := clock_timestamp();
+  end if;
+
+  return new;
+end;
+$function$;
+
+-- No second trigger. profiles_guard_columns (BEFORE UPDATE, FOR EACH ROW)
+-- already exists and is unchanged; it now does the stamping too.
+
+
+-- ------------------------------------------------------------
+-- 3. The staff review action
+--
+-- Returns the path it just marked reviewed, so the caller cleans up against
+-- the version the database actually blessed rather than one it read earlier
+-- and which may since have changed.
+-- ------------------------------------------------------------
+create or replace function public.mark_valid_id_reviewed(p_profile_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare v_path text;
+begin
+  if not is_staff() then
+    raise exception 'Only barangay staff can review a valid ID.';
+  end if;
+
+  update profiles
+     set valid_id_reviewed_at = clock_timestamp()
+   where id = p_profile_id
+   returning valid_id_path into v_path;
+
+  if not found then
+    raise exception 'No such resident.';
+  end if;
+
+  return v_path;
+end;
+$function$;
+
+revoke all on function public.mark_valid_id_reviewed(uuid) from public, anon;
+grant execute on function public.mark_valid_id_reviewed(uuid) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 4. The queue
+--
+--   select id, full_name, resident_id, valid_id_replaced_at
+--     from profiles
+--    where valid_id_replaced_at is not null
+--      and (valid_id_reviewed_at is null or valid_id_reviewed_at < valid_id_replaced_at)
+--    order by valid_id_replaced_at;
+--
+-- Needs no new policy: profiles_read_own is "id = auth.uid() OR is_staff()",
+-- and the secretary already reads every row (verified: 424 of 424).
+-- ------------------------------------------------------------
+
+
+-- ============================================================
+-- Rollback, if it is ever needed
+--
+--   drop function if exists public.mark_valid_id_reviewed(uuid);
+--   -- restore guard_profile_columns() from the LIVE DEFINITION quoted above
+--   drop index if exists public.profiles_valid_id_needs_check;
+--   alter table public.profiles
+--     drop column if exists valid_id_replaced_at,
+--     drop column if exists valid_id_reviewed_at;
+--
+-- Existing rows: all 421 residents and 3 staff get NULL for both columns,
+-- meaning "never replaced", so the queue is empty on the day it ships.
+-- ============================================================
