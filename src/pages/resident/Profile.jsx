@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -6,12 +6,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { supabase, friendlyError } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { Badge, Button, Card, CardHeader, Check, Field, Notice, PngSlot } from '../../components/ui'
+import { Badge, Button, Card, CardHeader, Check, Field, Notice } from '../../components/ui'
 import { Icon } from '../../components/Icon'
 import { ProfilePictureCard } from '../../components/ProfilePictureCard'
 import { longDate, shortDate } from '../../lib/formatters'
 import { residencyProblem } from '../../lib/age'
 import { optionalNumber } from '../../lib/formFields'
+import { ID_ACCEPT_ATTR, validateIdFile } from '../../lib/idFile'
+import { replaceValidId } from '../../lib/idUpload'
+import { idReviewSupported } from '../../lib/idRetention'
+import { idReuploadEnabled } from '../../lib/features'
+import { IdDocumentView } from '../../components/IdDocumentView'
 
 // A factory, for the same reason as the registration wizard's step 2: years of
 // residency only means anything next to the date of birth. A resident cannot
@@ -44,6 +49,68 @@ export default function Profile() {
   const [saveError, setSaveError] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // Replacing the ID on file.
+  const [replacing, setReplacing] = useState(false)
+  const [pendingFile, setPendingFile] = useState(null)
+  const [pendingPreview, setPendingPreview] = useState(null)
+  const [replaceBusy, setReplaceBusy] = useState(false)
+  const [replaceError, setReplaceError] = useState(null)
+  const [replaced, setReplaced] = useState(false)
+
+  // The re-upload action is only offered once the database can record that a
+  // replacement needs staff review. Before that migration the column is
+  // absent and the action stays hidden.
+  // Both must hold: the deployment flag AND the column that lets a
+  // replacement be queued. The migration alone is not enough.
+  const idReplacementEnabled = idReuploadEnabled() && idReviewSupported(profile)
+
+  // A local preview of the chosen file, revoked when it changes or the panel
+  // closes, so the blob does not outlive the decision.
+  useEffect(() => {
+    if (!pendingFile) {
+      setPendingPreview(null)
+      return undefined
+    }
+    const url = URL.createObjectURL(pendingFile)
+    setPendingPreview(url)
+    return () => {
+      URL.revokeObjectURL(url)
+      setPendingPreview(null)
+    }
+  }, [pendingFile])
+
+  /** Cancelling must leave the ID on file exactly as it was. */
+  function cancelReplace() {
+    setReplacing(false)
+    setPendingFile(null)
+    setReplaceError(null)
+  }
+
+  async function replaceId() {
+    if (!pendingFile || !profile?.id) return
+    setReplaceBusy(true)
+    setReplaceError(null)
+
+    const result = await replaceValidId({
+      client: supabase,
+      userId: profile.id,
+      file: pendingFile,
+    })
+
+    setReplaceBusy(false)
+    if (!result.ok) {
+      // Every failure path leaves valid_id_path untouched, so the card keeps
+      // showing the document that is actually on file.
+      setReplaceError(result.message)
+      return
+    }
+
+    setReplacing(false)
+    setPendingFile(null)
+    setReplaced(true)
+    await refetchProfile()
+  }
 
   const { data: enrollment, refetch: refetchEnrollment } = useQuery({
     queryKey: ['face-enrollment', profile?.id],
@@ -350,15 +417,135 @@ export default function Profile() {
 
           <Card padded>
             <h3 style={{ fontSize: 16.5, marginBottom: 12 }}>Your ID on file</h3>
-            <PngSlot
-              name="valid-id-placeholder.png"
-              style={{ width: '100%', height: 120, marginBottom: 12 }}
+
+            {/* The document itself, not a drawing of one. */}
+            <IdDocumentView
+              path={profile?.valid_id_path}
+              label="The valid ID you have on file"
+              emptyText="No valid ID uploaded."
             />
-            <p style={{ fontSize: 13.5, color: 'var(--ink-500)' }}>
+
+            <p style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 10 }}>
               {profile?.valid_id_path
                 ? 'Held privately. Only you and barangay staff can see it.'
-                : 'No ID photograph on file. Visit the barangay hall to add one.'}
+                : 'Upload one here, or visit the barangay hall.'}
             </p>
+
+            {/* ---- replacing it ----
+                Deliberately unavailable until the database can record that a
+                replacement needs checking. Without valid_id_replaced_at there
+                is no queue for the secretary, so a new document would sit
+                there looking exactly as settled as a verified one. The gate is
+                the column itself rather than a flag, so the action appears the
+                moment the migration lands and cannot be switched on early by
+                mistake. See supabase/proposals/valid-id-recheck.sql.proposed. */}
+            {!idReplacementEnabled && profile?.valid_id_path && (
+              <p style={{ fontSize: 13, color: 'var(--ink-400)', marginTop: 10 }}>
+                To change the ID on file, visit the barangay hall.
+              </p>
+            )}
+
+            {idReplacementEnabled && !replacing && (
+              <Button
+                size="s"
+                variant="secondary"
+                auto
+                onClick={() => {
+                  setReplaceError(null)
+                  setReplaced(false)
+                  setReplacing(true)
+                }}
+                style={{ marginTop: 12 }}
+              >
+                {profile?.valid_id_path ? 'Replace this ID' : 'Upload an ID'}
+              </Button>
+            )}
+
+            {idReplacementEnabled && replacing && (
+              <div className="idfile-replace">
+                <label className="btn btn-s btn-secondary btn-auto" style={{ cursor: 'pointer' }}>
+                  {pendingFile ? 'Choose a different file' : 'Choose a file'}
+                  <input
+                    type="file"
+                    accept={ID_ACCEPT_ATTR}
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null
+                      setReplaceError(null)
+                      if (!file) return
+                      // The existing rules, before anything is sent anywhere.
+                      const problem = validateIdFile(file)
+                      if (problem) {
+                        setPendingFile(null)
+                        setReplaceError(problem)
+                        return
+                      }
+                      setPendingFile(file)
+                    }}
+                  />
+                </label>
+
+                {pendingFile && (
+                  <>
+                    <p className="idfile-name">
+                      {pendingFile.name} · {(pendingFile.size / 1024).toFixed(0)} KB
+                    </p>
+                    {/* Previewed from the local file. Nothing has been
+                        uploaded at this point, so there is no object to
+                        clean up if the resident changes their mind. */}
+                    {pendingPreview &&
+                      (pendingFile.type === 'application/pdf' ? (
+                        <object
+                          data={pendingPreview}
+                          type="application/pdf"
+                          className="idfile"
+                          style={{ height: 180 }}
+                          aria-label="The ID you are about to upload"
+                        />
+                      ) : (
+                        <img
+                          src={pendingPreview}
+                          alt="The ID you are about to upload"
+                          className="idfile"
+                          style={{ maxHeight: 180 }}
+                        />
+                      ))}
+                  </>
+                )}
+
+                <Notice icon="info" title="The barangay will check this">
+                  Replacing your ID does not change your account. A member of staff still has to
+                  look at the new document, so keep the original with you until they have.
+                </Notice>
+
+                {replaceError && (
+                  <Notice tone="danger" icon="alert" title="Your ID was not replaced">
+                    {replaceError}
+                  </Notice>
+                )}
+
+                <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                  <Button
+                    size="s"
+                    auto
+                    disabled={!pendingFile || replaceBusy}
+                    onClick={replaceId}
+                    icon={replaceBusy ? undefined : 'check'}
+                  >
+                    {replaceBusy ? 'Uploading…' : 'Use this as my ID'}
+                  </Button>
+                  <Button size="s" variant="ghost" auto disabled={replaceBusy} onClick={cancelReplace}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {replaced && !replacing && (
+              <Notice icon="check" title="Your new ID is on file">
+                The barangay staff will check it against your record.
+              </Notice>
+            )}
           </Card>
 
           <Notice icon="lock" title="Your rights over this data">

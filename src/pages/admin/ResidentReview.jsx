@@ -7,6 +7,7 @@ import { Badge, Button, Card, CardHeader, Field, Notice, PngSlot } from '../../c
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { Icon } from '../../components/Icon'
 import { longDate, peso, shortDate } from '../../lib/formatters'
+import { cleanupSupersededIds, idReviewSupported, needsIdReview } from '../../lib/idRetention'
 
 const STATUS_TONE = { approved: 'approved', pending: 'pending', rejected: 'rejected', suspended: 'released' }
 
@@ -30,6 +31,48 @@ export default function ResidentReview() {
   const [idExpanded, setIdExpanded] = useState(false)
   const idCloseRef = useRef(null)
   const idOpenRef = useRef(null)
+  const [idReviewBusy, setIdReviewBusy] = useState(false)
+  const [idReviewError, setIdReviewError] = useState(null)
+
+  /**
+   * Accept the document the resident replaced.
+   *
+   * The database goes first and storage second, deliberately. The review is
+   * the fact that matters; a failed cleanup leaves an unreferenced file,
+   * which is untidy and fixable, whereas deleting first would risk removing
+   * a document while the review failed to record. Which file to keep comes
+   * back from the RPC rather than from the row we read earlier, so a path
+   * changed in between cannot cause the live document to be deleted.
+   */
+  async function markIdReviewed() {
+    setIdReviewBusy(true)
+    setIdReviewError(null)
+    try {
+      const { data: keepPath, error } = await supabase.rpc('mark_valid_id_reviewed', {
+        p_profile_id: id,
+      })
+      if (error) throw error
+
+      // A resident who changed only their ID number has no file at all, so
+      // the RPC returns null. There is nothing to supersede, and asking the
+      // cleanup to run would correctly refuse and look like a failure.
+      const tidied = keepPath
+        ? await cleanupSupersededIds({ client: supabase, userId: id, keepPath })
+        : { ok: true, removed: [] }
+      if (!tidied.ok) {
+        // Not a failure of the review, which has already been recorded.
+        setIdReviewError(
+          'Marked as checked. The resident’s older ID files could not be removed; they can be tidied later.',
+        )
+      }
+      await queryClient.invalidateQueries({ queryKey: ['admin-resident', id] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-residents'] })
+    } catch (err) {
+      setIdReviewError(friendlyError(err, 'This ID could not be marked as checked.'))
+    } finally {
+      setIdReviewBusy(false)
+    }
+  }
 
   const { data: p, isLoading } = useQuery({
     queryKey: ['admin-resident', id],
@@ -315,6 +358,36 @@ export default function ResidentReview() {
         <aside className="stack" style={{ gap: 24 }}>
           <Card padded style={{ padding: 24 }}>
             <h3 style={{ fontSize: 17, marginBottom: 14 }}>ID photograph</h3>
+
+            {/* A replacement the resident uploaded themselves. Their account
+                is untouched -- they are still approved and still hold their
+                Resident ID -- it is this document that has not been seen.
+                Hidden entirely until the migration adds the columns, so this
+                screen is safe to ship ahead of the database change. */}
+            {idReviewSupported(p) && needsIdReview(p) && (
+              <div style={{ marginBottom: 14 }}>
+                <Notice icon="alert" title="This ID has not been checked yet">
+                  The resident replaced it on {shortDate(p.valid_id_replaced_at)}. Compare it with
+                  the details below, then mark it checked.
+                </Notice>
+                {idReviewError && (
+                  <p style={{ fontSize: 13, color: 'var(--danger-600)', marginTop: 8 }}>
+                    {idReviewError}
+                  </p>
+                )}
+                <Button
+                  size="s"
+                  auto
+                  icon="check"
+                  disabled={idReviewBusy}
+                  onClick={markIdReviewed}
+                  style={{ marginTop: 10 }}
+                >
+                  {idReviewBusy ? 'Saving…' : 'Mark this ID as checked'}
+                </Button>
+              </div>
+            )}
+
             {idUrl ? (
               <>
                 {/* Registration accepts a PDF as well as an image, and a PDF in

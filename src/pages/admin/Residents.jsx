@@ -6,9 +6,13 @@ import { supabase, friendlyError } from '../../lib/supabase'
 import { Badge, Button, Card, CardHeader, Field, Notice } from '../../components/ui'
 import { EmptyState, ErrorState, LoadingRows } from '../../components/ui/States'
 import { shortDate } from '../../lib/formatters'
+import { needsIdReview } from '../../lib/idRetention'
 
 const TABS = [
   { key: 'pending', label: 'To verify' },
+  // Derived, not a status: these residents stay approved while the document
+  // they replaced waits to be looked at. See lib/idRetention.js.
+  { key: 'id-review', label: 'Needs ID review' },
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Not approved' },
   { key: 'all', label: 'Everyone' },
@@ -32,7 +36,10 @@ export default function Residents() {
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false })
-      if (status !== 'all') q = q.eq('status', status)
+      // "Needs ID review" is not a status. These residents keep whatever
+      // status they had -- usually approved -- so the rows are fetched and
+      // then narrowed by the same rule the database queue uses.
+      if (status !== 'all' && status !== 'id-review') q = q.eq('status', status)
       const { data, error } = await q
       if (error) throw error
       return data
@@ -40,6 +47,7 @@ export default function Residents() {
   })
 
   const rows = (data ?? []).filter((p) => {
+    if (status === 'id-review' && !needsIdReview(p)) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
     return (
@@ -172,6 +180,14 @@ export default function Residents() {
                     <Badge tone={STATUS_TONE[p.status]}>
                       {p.status === 'pending' ? 'To verify' : p.status}
                     </Badge>
+                    {/* Sits beside the status rather than replacing it: the
+                        resident is still approved, it is the document that
+                        is waiting. */}
+                    {needsIdReview(p) && (
+                      <Badge tone="pending" style={{ marginLeft: 6 }}>
+                        New ID
+                      </Badge>
+                    )}
                   </td>
                   <td data-label="Action">
                     {/* Staff accounts are not deletable here; the database

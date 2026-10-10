@@ -3907,3 +3907,43 @@ object.summary-id {
   font-weight: 400;
   opacity: 0.55;
 }
+
+/* ------------------------------------------------------------------
+   The resident's own valid ID, on My Profile
+   ------------------------------------------------------------------ */
+
+/* One frame whether the file is an image or a PDF, so the card keeps its
+   shape either way. */
+.idfile {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--r-md);
+  background: var(--ink-50);
+  object-fit: contain;
+}
+.idfile-empty {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  padding: 16px;
+  border-style: dashed;
+  font-size: 13.5px;
+  color: var(--ink-400);
+  text-align: center;
+}
+.idfile-name {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-700);
+  overflow-wrap: anywhere;
+}
+.idfile-replace {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ink-100);
+}
