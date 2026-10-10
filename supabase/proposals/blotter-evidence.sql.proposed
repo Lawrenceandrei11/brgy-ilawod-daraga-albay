@@ -1,0 +1,20 @@
+-- ============================================================
+-- SUPERSEDED. There is no SQL in this file, and nothing here to apply.
+--
+-- The authoritative migration is:
+--
+--   supabase/migrations/20261010191236_30_blotter_evidence.sql
+--
+-- It is the only copy. Keeping a second, runnable copy of the same DDL is how
+-- a migration gets applied twice, so this file was emptied rather than left
+-- alongside it. src/lib/__tests__/blotterEvidence.pg.test.js reads the
+-- migration directly, so the tests and the file that would be applied cannot
+-- drift apart.
+--
+-- That migration has ALREADY been applied to production, and is recorded in
+-- supabase_migrations.schema_migrations as version 20261010191236, name
+-- 30_blotter_evidence.
+--
+-- This file is a pointer and a reference only. It is not SQL to execute, and
+-- the migration it points at must not be applied a second time.
+-- ============================================================

@@ -5,6 +5,7 @@ import { supabase, friendlyError } from '../../lib/supabase'
 import { Badge, Button, Card, CardHeader, Field, Notice } from '../../components/ui'
 import { EmptyState, LoadingRows } from '../../components/ui/States'
 import { longDate, shortDate } from '../../lib/formatters'
+import { EvidenceGallery } from '../../components/EvidenceGallery'
 
 const STATUS = {
   filed: { label: 'Filed', tone: 'pending' },
@@ -30,13 +31,17 @@ export default function BlotterAdmin() {
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error: loadError } = useQuery({
     queryKey: ['admin-blotter'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('blotter_reports')
-        .select('*, profiles!blotter_reports_complainant_id_fkey(full_name, resident_id, purok, mobile)')
+        .select(
+          '*, profiles!blotter_reports_complainant_id_fkey(full_name, resident_id, purok, mobile), blotter_evidence(id, storage_path, content_type, created_at)'
+        )
         .order('created_at', { ascending: false })
+        // Oldest photo first, so the order matches the order they were taken in.
+        .order('created_at', { referencedTable: 'blotter_evidence', ascending: true })
       if (error) throw error
       return data
     },
@@ -76,6 +81,15 @@ export default function BlotterAdmin() {
 
       {error && <Notice tone="danger" icon="alert" title="Could not save">{error}</Notice>}
 
+      {/* An empty list and a failed load look identical otherwise, and the
+          difference matters: one means there is nothing to review, the other
+          means the reports are there but this screen could not read them. */}
+      {isError && (
+        <Notice tone="danger" icon="alert" title="The blotter could not be loaded">
+          {friendlyError(loadError, 'The reports could not be read. Refresh the page and try again.')}
+        </Notice>
+      )}
+
       <div className="filterbar">
         {[['open', 'Open cases'], ['filed', 'Newly filed'], ['under_mediation', 'In mediation'], ['resolved', 'Resolved'], ['all', 'All']].map(
           ([k, label]) => (
@@ -90,6 +104,10 @@ export default function BlotterAdmin() {
         <CardHeader title={`${rows.length} report${rows.length === 1 ? '' : 's'}`} />
         {isLoading ? (
           <LoadingRows rows={4} />
+        ) : isError ? (
+          <EmptyState icon="alert" title="Not loaded">
+            The reports could not be read just now.
+          </EmptyState>
         ) : rows.length === 0 ? (
           <EmptyState icon="alert" title="No reports">
             Nothing matches this filter.
@@ -146,6 +164,10 @@ export default function BlotterAdmin() {
                           {b.narrative}
                         </p>
                       </div>
+
+                      {/* The photographs the complainant attached, if any.
+                          Private bucket, signed links, five minutes. */}
+                      <EvidenceGallery evidence={b.blotter_evidence} refNo={b.ref_no} />
 
                       {b.resolution && (
                         <div style={{ marginBottom: 18 }}>
