@@ -11,7 +11,7 @@ import { longDate } from '../../lib/formatters'
 import { MainLogo } from '../../components/MainLogo'
 import { optionalNumber } from '../../lib/formFields'
 import { ID_ACCEPT_ATTR, validateIdFile } from '../../lib/idFile'
-import { idCheckMessage } from '../../lib/idCheck'
+import { idCheckLabel, idCheckMessage } from '../../lib/idCheck'
 import { normalizeIdNumber } from '../../lib/idNumber'
 import { useIdNumberCheck } from '../../hooks/useIdNumberCheck'
 import {
@@ -186,6 +186,7 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
   const typedType = watch('valid_id_type')
   const idCheck = useIdNumberCheck({ file: idFile, entered: typedNumber, idType: typedType })
   const checkMessage = idCheckMessage(idCheck)
+  const checkLabel = idCheckLabel(idCheck)
 
   function chooseFile(e) {
     const file = e.target.files?.[0]
@@ -206,6 +207,11 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
       setFileError('A photo of your valid ID is required.')
       return
     }
+    // Still reading. Not a refusal -- there is simply no answer yet, and
+    // letting the step through now would mean a mismatch verdict arriving
+    // after the resident had already moved on. The button is disabled while
+    // this is true; this guard is what makes that more than cosmetic.
+    if (!idCheck.ready) return
     // A confident mismatch is the only outcome that stops the resident here.
     // Unreadable, faint and ambiguous reads all continue to the secretary.
     if (idCheck.blocking) return
@@ -375,7 +381,10 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
                     }
                     size="sm"
                   />
-                  <span>{checkMessage}</span>
+                  <span>
+                    {checkLabel && <b className="idcheck-tag">{checkLabel}</b>}
+                    {checkMessage}
+                  </span>
                 </span>
               )}
             </div>
@@ -437,8 +446,15 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
               flexWrap: 'wrap',
             }}
           >
-            <Button type="submit" auto iconRight="arrow">
-              Continue to household details
+            {/* Disabled while the uploaded ID is being read, so the resident
+                cannot step past a verdict that has not arrived yet. */}
+            <Button
+              type="submit"
+              auto
+              iconRight={idCheck.ready ? 'arrow' : undefined}
+              disabled={!idCheck.ready}
+            >
+              {idCheck.ready ? 'Continue to household details' : 'Checking your ID…'}
             </Button>
           </div>
         </form>

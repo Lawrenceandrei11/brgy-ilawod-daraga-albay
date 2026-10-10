@@ -3894,3 +3894,16 @@ object.summary-id {
     height: 200px;
   }
 }
+
+/* The verdict in front of the ID-check sentence. "Not checked" has to be as
+   easy to notice as "Matches your ID", or an uncertain result gets skimmed as
+   a pass. */
+.idcheck-tag {
+  margin-right: 6px;
+  font-weight: 700;
+}
+.idcheck-tag::after {
+  content: ' ·';
+  font-weight: 400;
+  opacity: 0.55;
+}

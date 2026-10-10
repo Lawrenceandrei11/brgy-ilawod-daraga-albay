@@ -15,7 +15,7 @@
 
 import { compareIdNumber } from './idNumber.js'
 
-export const ID_CHECK_IDLE = { status: 'idle' }
+export const ID_CHECK_IDLE = { status: 'idle', blocking: false, ready: true }
 
 /**
  * status is one of:
@@ -28,45 +28,89 @@ export const ID_CHECK_IDLE = { status: 'idle' }
  *   uncertain    unreadable, faint, or several candidates and none match
  *
  * `blocking` is true only for `mismatch`. Nothing else may stop a registration.
+ *
+ * `ready` is false only while a read is in flight, and it is a different idea
+ * from `blocking`: it does not mean "refuse", it means "no answer yet". The
+ * two have to be separate, because treating "no answer yet" as permission to
+ * continue is a hole -- the resident presses Continue during the read and the
+ * mismatch verdict arrives after they have already left the step. A read can
+ * take twenty seconds on a scanned PDF, so this is not a narrow race.
  */
 export function idCheckState({ file, entered, idType, read, minConfidence } = {}) {
   if (!file) return ID_CHECK_IDLE
 
   // A read from a previous file tells us nothing about this one.
-  if (!read || read.file !== file) return { status: 'reading', blocking: false }
-  if (read.status === 'reading') return { status: 'reading', blocking: false }
+  if (!read || read.file !== file) return { status: 'reading', blocking: false, ready: false }
+  if (read.status === 'reading') return { status: 'reading', blocking: false, ready: false }
 
   const result = read.result
-  if (!result) return { status: 'reading', blocking: false }
+  if (!result) return { status: 'reading', blocking: false, ready: false }
 
   if (result.ok === false) {
     if (result.reason === 'unsupported') {
-      return { status: 'unsupported', blocking: false, message: result.message }
+      return { status: 'unsupported', blocking: false, ready: true, message: result.message }
     }
-    if (result.reason === 'aborted') return { status: 'reading', blocking: false }
+    if (result.reason === 'aborted') return { status: 'reading', blocking: false, ready: false }
     // A PDF that could not be rendered gets its own state, so the resident is
     // told what actually happened rather than a generic "could not check".
     if (result.reason === 'pdf-unreadable') {
-      return { status: 'pdf-manual', blocking: false }
+      return { status: 'pdf-manual', blocking: false, ready: true }
     }
-    return { status: 'failed', blocking: false, message: result.message }
+    return { status: 'failed', blocking: false, ready: true, message: result.message }
   }
 
   const decision = compareIdNumber({ entered, ocr: result, idType, minConfidence })
 
   if (decision.outcome === 'skipped') return ID_CHECK_IDLE
   if (decision.outcome === 'match') {
-    return { status: 'match', blocking: false, how: decision.how, confidence: decision.confidence }
+    return {
+      status: 'match',
+      blocking: false,
+      ready: true,
+      how: decision.how,
+      confidence: decision.confidence,
+    }
   }
   if (decision.outcome === 'mismatch') {
     return {
       status: 'mismatch',
       blocking: true,
+      ready: true,
       confidence: decision.confidence,
       readMasked: decision.readMasked,
     }
   }
-  return { status: 'uncertain', blocking: false, reason: decision.reason }
+  return { status: 'uncertain', blocking: false, ready: true, reason: decision.reason }
+}
+
+/**
+ * A two-or-three word verdict, shown in front of the sentence below.
+ *
+ * The sentence alone was doing too much work: "we could not read this" and
+ * "this matches" are different colours and different icons, but a resident
+ * skimming a form reads neither. Only `match` is allowed to say anything that
+ * sounds like a pass, and every outcome that did not establish a match says
+ * so in the same two words, so an uncertain result cannot be mistaken for a
+ * verified one.
+ */
+export function idCheckLabel(state) {
+  switch (state?.status) {
+    // No tag while reading: the sentence beside it already says "Checking the
+    // number against your uploaded ID", and "Checking · Checking..." is the
+    // kind of thing that survives review by being too small to notice.
+    case 'reading':
+      return ''
+    case 'match':
+      return 'Matches your ID'
+    case 'mismatch':
+      return 'Does not match'
+    case 'uncertain':
+    case 'failed':
+    case 'pdf-manual':
+      return 'Not checked'
+    default:
+      return ''
+  }
 }
 
 /** The sentence shown under the ID number field for each state. */

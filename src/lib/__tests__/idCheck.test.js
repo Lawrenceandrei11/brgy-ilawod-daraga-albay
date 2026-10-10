@@ -10,7 +10,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ID_CHECK_IDLE, idCheckMessage, idCheckState } from '../idCheck.js'
+import { ID_CHECK_IDLE, idCheckLabel, idCheckMessage, idCheckState } from '../idCheck.js'
 import { MAX_ID_BYTES } from '../idFile.js'
 
 const PCN = '1234567890123456'
@@ -239,4 +239,93 @@ test('the uncertain message offers manual review rather than a refusal', () => {
   const msg = idCheckMessage({ status: 'uncertain' })
   assert.match(msg, /secretary/)
   assert.match(msg, /carry on/)
+})
+
+// ---------------------------------------------------------- regression: the
+// "no answer yet" hole
+//
+// Reported defect: typing a wrong number, uploading a document showing a
+// clearly different one, and pressing Continue advanced to step 2 anyway. The
+// cause was not the comparison -- that correctly said mismatch, confidence 95
+// -- but that the step did not wait for it. `blocking` was false during the
+// read, and false was being read as "fine to proceed".
+
+test('a read in flight is NOT ready, so the step cannot be stepped past', () => {
+  // No read yet at all.
+  const fresh = idCheckState({ file: fileA, entered: PCN, idType, read: null })
+  assert.equal(fresh.status, 'reading')
+  assert.equal(fresh.ready, false)
+  assert.equal(fresh.blocking, false, 'reading is not a refusal')
+
+  // A read that has started but not finished.
+  const started = idCheckState({
+    file: fileA,
+    entered: PCN,
+    idType,
+    read: { file: fileA, status: 'reading', result: null },
+  })
+  assert.equal(started.ready, false)
+
+  // A read belonging to the PREVIOUS file, which is the reported scenario:
+  // the resident swapped the document and pressed on immediately.
+  const stale = idCheckState({
+    file: fileB,
+    entered: PCN,
+    idType,
+    read: doneWith(fileA, ocrOf('1234 5678 9012 3456')),
+  })
+  assert.equal(stale.status, 'reading')
+  assert.equal(stale.ready, false, 'a stale read must not let the step through')
+})
+
+test('every settled outcome is ready, so the resident is never stuck', () => {
+  const settled = [
+    ID_CHECK_IDLE,
+    idCheckState({ file: fileA, entered: PCN, idType, read: doneWith(fileA, ocrOf('1234 5678 9012 3456')) }),
+    idCheckState({ file: fileA, entered: PCN, idType, read: doneWith(fileA, ocrOf('9999 8888 7777 6666')) }),
+    idCheckState({ file: fileA, entered: PCN, idType, read: doneWith(fileA, ocrOf('9999 8888 7777 6666', 30)) }),
+    idCheckState({ file: fileA, entered: PCN, idType, read: doneWith(fileA, { ok: false, reason: 'engine-failed' }) }),
+    idCheckState({ file: pdfFile, entered: PCN, idType, read: doneWith(pdfFile, { ok: false, reason: 'pdf-unreadable' }) }),
+  ]
+  for (const s of settled) {
+    assert.equal(s.ready, true, `${s.status} must be ready`)
+  }
+  // Only a confident mismatch refuses.
+  assert.deepEqual(
+    settled.filter((s) => s.blocking).map((s) => s.status),
+    ['mismatch'],
+  )
+})
+
+test('the exact reported case: wrong number, readable document, mismatch that blocks', () => {
+  // The document says ...9012; the resident typed ...4444.
+  const read = doneWith(fileA, ocrOf('5555 1234 5678 9012'))
+  const s = idCheckState({ file: fileA, entered: '1111-2222-3333-4444', idType, read })
+  assert.equal(s.status, 'mismatch')
+  assert.equal(s.blocking, true)
+  assert.equal(s.ready, true)
+  assert.equal(s.readMasked, '••••••••9012')
+})
+
+test('an uncertain result is labelled "Not checked", never as a match', () => {
+  const uncertain = idCheckState({
+    file: fileA,
+    entered: PCN,
+    idType,
+    read: doneWith(fileA, ocrOf('9999 8888 7777 6666', 30)),
+  })
+  assert.equal(uncertain.status, 'uncertain')
+  assert.equal(idCheckLabel(uncertain), 'Not checked')
+  // The three outcomes that establish nothing must all say the same thing.
+  assert.equal(idCheckLabel({ status: 'failed' }), 'Not checked')
+  assert.equal(idCheckLabel({ status: 'pdf-manual' }), 'Not checked')
+  // And only a real match may say so.
+  assert.equal(idCheckLabel({ status: 'match' }), 'Matches your ID')
+  assert.equal(idCheckLabel({ status: 'mismatch' }), 'Does not match')
+  for (const status of ['uncertain', 'failed', 'pdf-manual', 'mismatch', 'reading']) {
+    assert.ok(
+      !/^Matches/.test(idCheckLabel({ status })),
+      `${status} must not read as a pass`,
+    )
+  }
 })
