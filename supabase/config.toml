@@ -1,6 +1,6 @@
 # Supabase CLI configuration.
 #
-# Added for one reason: both Edge Functions must be deployed without JWT
+# Added for one reason: the public Edge Functions must be deployed without JWT
 # verification, and until now that lived only as a `--no-verify-jwt` flag in
 # the README and in whoever's shell history. Pinning it here means a plain
 # `supabase functions deploy` does the right thing.
@@ -19,6 +19,12 @@ verify_jwt = false
 # function then checks that the caller's own profile is barangay staff before
 # creating anything.
 verify_jwt = true
+
+[functions.id-extract]
+# Registration happens before the resident has an account, so there is no JWT
+# to verify -- the same situation as face-login. The function limits itself by
+# IP instead, and refuses outright if that limit is not configured.
+verify_jwt = false
 
 [functions.sms-dispatch]
 # Not laxer than face-login, stricter. verify_jwt would accept any resident's

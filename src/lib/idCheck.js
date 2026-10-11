@@ -1,163 +1,99 @@
 /**
- * What the ID check should be showing, given the current inputs and whatever
- * OCR has managed so far.
+ * What the ID check should be showing, now that the reader is Gemini.
  *
- * Pure, so the invalidation rules can be tested without a browser or a
- * renderer. The hook in hooks/useIdNumberCheck.js is a thin wrapper and the
- * React effect only ever does one thing: run OCR when the FILE changes.
- *
- * The rule that matters: a result belongs to the file it was read from. When
- * the resident swaps the file, `read.file` no longer matches and the previous
- * outcome is discarded rather than carried over. When they edit the number or
- * the ID type instead, the read still stands but the comparison is redone, so
- * an earlier match cannot survive a changed number.
+ * The in-browser OCR this file used to drive is gone -- with it went
+ * tesseract, 25.7 MB of language data and the second reader that fought with
+ * the first. One reader now, and it runs only when the resident asks for it.
  *
  * ---------------------------------------------------------------------------
- * What may continue, and why
+ * What is actually being verified
  *
- * Exactly one outcome continues: an EXACT match of the typed number against a
- * number read from the document, after normalisation that cannot change which
- * number is meant -- case, spaces and hyphens.
+ * It depends entirely on who typed the number, and that distinction is the
+ * whole point of this file:
  *
- * Everything else holds the resident on step 1. "We could not tell" is not
- * permission, and neither is "we could not look". That includes the two cases
- * that used to pass as unverified:
+ *   the field was EMPTY     the reader fills it. Nothing is verified -- the
+ *                           number came out of the photograph, so comparing
+ *                           it to the photograph proves nothing.
  *
- *   failed      the OCR engine could not run here, or the read timed out
- *   pdf-manual  the PDF could not be rendered, so there was no image to read
+ *   the resident TYPED it   the reader does not overwrite it. It compares.
+ *                           Two independent readings of one card -- a person
+ *                           and a model -- so a match means something and a
+ *                           mismatch is evidence.
  *
- * Both mean the number was never checked against anything, so under a strict
- * gate neither may proceed. The limitation is real and is stated on screen: a
- * resident whose device cannot run the engine, or whose only document is a PDF
- * this flow cannot render, must upload a PHOTOGRAPH of the ID instead. There
- * is no other supported path on this step.
- *
- * The secretary is still the final authority -- registration lands as
- * `pending`, and only staff-only approve_resident() changes that -- but this
- * step no longer leans on that to excuse an unchecked number.
+ * Only a mismatch stops anyone. Everything else goes through to the barangay
+ * secretary, flagged, because there is no offline reader left: blocking on
+ * "could not read" would mean a flat signal or an outage at Google stops a
+ * resident registering at all.
  * ---------------------------------------------------------------------------
  */
 
-import { compareIdNumber } from './idNumber.js'
+import { maskIdNumber, normalizeIdNumber } from './idNumber.js'
 
-/** No file chosen yet. The form's own "ID is required" rule covers this. */
-export const ID_CHECK_IDLE = { status: 'idle', blocking: false, ready: true }
+/** No reading has been attempted. The resident may simply be typing. */
+export const ID_CHECK_IDLE = { status: 'idle', blocking: false, provenance: 'pending_manual' }
 
 /**
  * status is one of:
- *   idle         no file yet
- *   reading      OCR is working on the current file
- *   too-short    a file is present but the typed number is too short to compare
- *   unsupported  the file failed the upload rules
- *   failed       the engine could not run here, or the read timed out
- *   pdf-manual   the PDF could not be rendered
- *   match        the number on the document is the number typed
- *   mismatch     a number was read confidently and it is not the one typed
- *   uncertain    unreadable, faint, or several candidates and none match
+ *   idle         no read attempted -- the reader is opt-in and manual
+ *   reading      a read is in flight
+ *   filled       the field was empty and the reader filled it (NOT verified)
+ *   match        the resident typed it and the reader agrees
+ *   mismatch     the resident typed it and the reader disagrees  -> blocks
+ *   unread       the reader ran but found no number on the card
+ *   unavailable  the reader could not run at all
  *
- * `blocking` is true for every outcome that did not establish an exact match.
+ * `provenance` is what gets written to profiles.id_verification.
  *
- * `ready` is false only while a read is in flight, and it is a different idea
- * from `blocking`: it does not mean "refuse", it means "no answer yet". The
- * two have to be separate, because treating "no answer yet" as permission to
- * continue is a hole -- the resident presses Continue during the read and the
- * mismatch verdict arrives after they have already left the step. A read can
- * take twenty seconds on a scanned PDF, so this is not a narrow race.
+ * Note what is NOT here: `auto_verified`. A match is decided in the browser,
+ * and the server cannot tell a real match from a crafted request claiming one
+ * -- guard_profile_columns refuses it from a resident for exactly that
+ * reason. So a match is reported to the resident as good news and recorded as
+ * still needing a human. Being honest about that is cheap; pretending
+ * otherwise would put a "verified" badge in front of the secretary that no
+ * one had earned.
  */
-export function idCheckState({ file, entered, idType, read, minConfidence } = {}) {
-  if (!file) return ID_CHECK_IDLE
+export function idVerdict({ typed, read, status } = {}) {
+  if (status === 'reading') return { status: 'reading', blocking: false, provenance: 'pending_manual' }
+  if (status === 'unavailable') {
+    return { status: 'unavailable', blocking: false, provenance: 'pending_manual' }
+  }
+  if (status === 'idle' || !status) return ID_CHECK_IDLE
 
-  // A read from a previous file tells us nothing about this one.
-  if (!read || read.file !== file) return { status: 'reading', blocking: false, ready: false }
-  if (read.status === 'reading') return { status: 'reading', blocking: false, ready: false }
+  const theirs = normalizeIdNumber(typed)
+  const seen = normalizeIdNumber(read)
 
-  const result = read.result
-  if (!result) return { status: 'reading', blocking: false, ready: false }
+  // The reader ran and found nothing to compare or to fill.
+  if (!seen) return { status: 'unread', blocking: false, provenance: 'pending_manual' }
 
-  if (result.ok === false) {
-    // The file itself was refused. Nothing was read, so nothing is verified.
-    if (result.reason === 'unsupported') {
-      return { status: 'unsupported', blocking: true, ready: true, message: result.message }
-    }
-    if (result.reason === 'aborted') return { status: 'reading', blocking: false, ready: false }
-    // A PDF that could not be rendered gets its own state, so the resident is
-    // told what actually happened rather than a generic "could not check".
-    if (result.reason === 'pdf-unreadable') {
-      return { status: 'pdf-manual', blocking: true, ready: true }
-    }
-    return { status: 'failed', blocking: true, ready: true, message: result.message }
+  // The field was empty when the reader ran, so this number IS the reading.
+  if (!theirs) return { status: 'filled', blocking: false, provenance: 'ai_extracted' }
+
+  if (theirs === seen) {
+    return { status: 'match', blocking: false, provenance: 'pending_manual' }
   }
 
-  const decision = compareIdNumber({ entered, ocr: result, idType, minConfidence })
-
-  // A number too short to compare once punctuation is stripped. The form asks
-  // for five characters AFTER trimming, but the comparison needs five after
-  // normalising, and normalising removes every non-alphanumeric -- so "12-34"
-  // satisfied the form and was never checked against anything. It used to fall
-  // through to the idle state, which looks exactly like "no file yet" and let
-  // the resident continue with no verification at all.
-  if (decision.outcome === 'skipped') {
-    return { status: 'too-short', blocking: true, ready: true }
+  return {
+    status: 'mismatch',
+    blocking: true,
+    provenance: 'pending_manual',
+    readMasked: maskIdNumber(seen),
   }
-
-  if (decision.outcome === 'match') {
-    return {
-      status: 'match',
-      blocking: false,
-      ready: true,
-      how: decision.how,
-      confidence: decision.confidence,
-    }
-  }
-
-  if (decision.outcome === 'mismatch') {
-    return {
-      status: 'mismatch',
-      blocking: true,
-      ready: true,
-      confidence: decision.confidence,
-      readMasked: decision.readMasked,
-    }
-  }
-
-  // Unreadable, faint, or several plausible candidates and none of them the
-  // typed number. The document was legible enough to attempt, so a sharper
-  // photograph is a real remedy -- unlike `failed` and `pdf-manual`, where
-  // there was nothing to read in the first place.
-  return { status: 'uncertain', blocking: true, ready: true, reason: decision.reason }
 }
 
-/**
- * A two-or-three word verdict, shown in front of the sentence below.
- *
- * The sentence alone was doing too much work: "we could not read this" and
- * "this matches" are different colours and different icons, but a resident
- * skimming a form reads neither. Only `match` is allowed to say anything that
- * sounds like a pass, and every outcome that did not establish a match says so
- * in the same two words, so an uncertain result cannot be mistaken for a
- * verified one.
- */
+/** A two-or-three word verdict, shown in front of the sentence below. */
 export function idCheckLabel(state) {
   switch (state?.status) {
-    // No tag while reading: the sentence beside it already says "Checking the
-    // number against your uploaded ID", and "Checking · Checking..." is the
-    // kind of thing that survives review by being too small to notice.
     case 'reading':
       return ''
     case 'match':
       return 'Matches your ID'
     case 'mismatch':
       return 'Does not match'
-    case 'uncertain':
-      return 'Could not read'
-    case 'too-short':
-      return 'Incomplete'
-    case 'unsupported':
-      return 'Cannot be used'
-    // Neither of these proceeds any more. The number was never read, so there
-    // is nothing to say about it except that it could not be checked.
-    case 'failed':
-    case 'pdf-manual':
+    case 'filled':
+      return 'Read from your ID'
+    case 'unread':
+      return 'Number not read'
+    case 'unavailable':
       return 'Could not check'
     default:
       return ''
@@ -168,23 +104,17 @@ export function idCheckLabel(state) {
 export function idCheckMessage(state) {
   switch (state?.status) {
     case 'reading':
-      return 'Checking the number against your uploaded ID…'
+      return 'Reading your ID…'
     case 'match':
-      return state.how === 'lookalike'
-        ? 'This matches the number on your uploaded ID.'
-        : 'This matches the number printed on your uploaded ID.'
+      return 'This matches the number on the ID you uploaded. The barangay secretary will still check the document itself.'
     case 'mismatch':
-      return `The number on the ID you uploaded ends ${state.readMasked}, which is not the number you typed. Correct the number, or upload the ID it belongs to.`
-    case 'uncertain':
-      return 'We could not read the number on your uploaded ID clearly enough to check it. Upload a sharper, well-lit photo with the whole ID in frame, or check the number you typed.'
-    case 'too-short':
-      return 'Type the ID number in full, as printed on the ID, so it can be checked against the photo you uploaded.'
-    case 'unsupported':
-      return state.message ?? 'Upload a PNG, JPEG, WEBP or PDF of your ID.'
-    case 'pdf-manual':
-      return 'We could not open this PDF to read the number, so it has not been checked. Upload a clear photo of the ID instead — a photograph is the only format this step can check.'
-    case 'failed':
-      return 'The ID check could not finish on this device, so your number has not been checked. Try again, or open this page in another browser or on another phone — the number has to be checked here before the next step.'
+      return `The ID you uploaded shows a number ending ${state.readMasked}, which is not the number you typed. Correct the number, or upload the ID it belongs to.`
+    case 'filled':
+      return 'This number was read off your uploaded ID, so it has not been checked against anything. Compare it with your card — the barangay secretary will check it too.'
+    case 'unread':
+      return 'No number could be read on your uploaded ID, so the one you typed has not been checked. The barangay secretary will check it by hand.'
+    case 'unavailable':
+      return 'The ID could not be read just now, so your number has not been checked. You can carry on — the barangay secretary will check it by hand.'
     default:
       return ''
   }

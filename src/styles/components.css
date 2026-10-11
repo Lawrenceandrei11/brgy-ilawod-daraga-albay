@@ -3849,6 +3849,21 @@ object.idview {
   font-weight: 600;
 }
 
+/* The opt-in AI reader under the ID upload box. Set apart from the upload
+   itself, because ticking it sends the document somewhere the rest of this
+   form never does. */
+.airead {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink-200);
+  border-left: 3px solid var(--primary-600);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.airead .check {
+  align-items: flex-start;
+}
+
 /* The uploaded ID on the summary step, beside the details it was read from. */
 .summary-id {
   display: block;

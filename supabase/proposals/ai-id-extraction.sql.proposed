@@ -1,0 +1,188 @@
+-- ============================================================
+-- 32_ai_id_extraction
+--
+-- What the AI reading of an uploaded ID needs from the database.
+--
+-- PROPOSAL ONLY. Not applied to any database. Tested against a real Postgres
+-- with PGlite in src/lib/__tests__/aiIdExtraction.pg.test.js, which reads
+-- THIS file.
+--
+-- Three things, all additive:
+--
+--   1. somewhere to record HOW an ID number was obtained,
+--   2. a per-IP counter so a public, paid endpoint cannot be drained,
+--   3. two settings rows so the model and the limit change without a deploy.
+--
+-- Nothing existing is dropped. guard_profile_columns is replaced, and the
+-- body below is the live one with a single rule added -- diff it against
+-- production before applying.
+-- ============================================================
+
+-- ---------- 1. how was this number obtained? ----------
+--
+-- Until now the database recorded the number and the document, but not
+-- whether anyone or anything had checked that they agree. An auto-verified
+-- registration and one that was never checked looked identical to the
+-- secretary.
+--
+--   auto_verified   OCR read the number off the photo and it matched what
+--                   the resident typed, independently
+--   ai_extracted    the number was READ OUT of the photo and filled in for
+--                   the resident, so the two are not independent and the
+--                   match proves nothing. Needs a human.
+--   pending_manual  no automatic check was possible at all
+--
+-- Null means the row predates this column.
+
+alter table profiles add column id_verification text;
+
+alter table profiles add constraint profiles_id_verification_check
+  check (
+    id_verification is null
+    or id_verification in ('auto_verified', 'ai_extracted', 'pending_manual')
+  );
+
+comment on column profiles.id_verification is
+  'How the valid ID number was obtained: auto_verified (independently matched), ai_extracted (read out of the photo for the resident, not independent), pending_manual (no check possible). Null for rows predating the column.';
+
+-- ---------- 2. the guard ----------
+--
+-- The live body, with ONE rule added at the end of the non-staff branch.
+--
+-- The resident's own registration has to write this column -- it is their
+-- profile row being updated at the end of step 3 -- so it cannot simply be
+-- staff-only. Instead a non-staff writer may set it to the two values that
+-- mean "not verified", and never to auto_verified. Claiming verification is
+-- staff's alone; admitting the lack of it is anyone's.
+
+create or replace function guard_profile_columns()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_doc_changed boolean;
+begin
+  v_doc_changed :=
+       new.valid_id_path   is distinct from old.valid_id_path
+    or new.valid_id_number is distinct from old.valid_id_number
+    or new.valid_id_type   is distinct from old.valid_id_type;
+
+  if is_staff() then
+    if v_doc_changed and new.valid_id_reviewed_at is not distinct from old.valid_id_reviewed_at then
+      new.valid_id_replaced_at := clock_timestamp();
+      new.valid_id_reviewed_at := clock_timestamp();
+    end if;
+    return new;
+  end if;
+
+  if new.role is distinct from old.role
+     or new.status is distinct from old.status
+     or new.resident_id is distinct from old.resident_id
+     or new.approved_by is distinct from old.approved_by
+     or new.approved_at is distinct from old.approved_at then
+    raise exception 'Only barangay staff may change role, status or resident ID';
+  end if;
+
+  if new.valid_id_reviewed_at is distinct from old.valid_id_reviewed_at then
+    raise exception 'Only barangay staff may mark a valid ID as reviewed';
+  end if;
+  if new.valid_id_replaced_at is distinct from old.valid_id_replaced_at then
+    raise exception 'valid_id_replaced_at is set automatically';
+  end if;
+
+  -- NEW: a resident may say their number was not independently checked, and
+  -- may not say that it was. Setting it back to null is refused too -- that
+  -- would erase a verdict staff had recorded.
+  if new.id_verification is distinct from old.id_verification
+     and new.id_verification is distinct from 'ai_extracted'
+     and new.id_verification is distinct from 'pending_manual' then
+    raise exception 'Only barangay staff may record an ID number as verified';
+  end if;
+
+  if v_doc_changed then
+    new.valid_id_replaced_at := clock_timestamp();
+  end if;
+
+  return new;
+end;
+$$;
+
+-- ---------- 3. the per-IP counter ----------
+--
+-- Registration happens before the account exists, so id-extract has no JWT to
+-- check and is reachable by anyone. It spends money per call, so it counts
+-- callers by address, the same way face-login locks out by address.
+--
+-- Deliberately minimal: an address and a time. No profile, no user agent, no
+-- image, nothing about what was read. It exists to answer one question --
+-- "how many times has this address asked in the last hour" -- and must not
+-- become an incidental log of who registered from where for longer than it
+-- takes to answer that.
+
+create table ai_extraction_attempts (
+  id         bigserial primary key,
+  ip         inet not null,
+  created_at timestamptz not null default now()
+);
+
+create index ai_extraction_attempts_ip_idx
+  on ai_extraction_attempts (ip, created_at desc);
+
+comment on table ai_extraction_attempts is
+  'Rate-limit counter for the id-extract Edge Function. An address and a timestamp only; purged after 7 days.';
+
+-- No policies at all, and no grants. The Edge Function reaches this table
+-- with the service role, which bypasses RLS; no browser role can see it.
+-- Supabase grants ALL on new public tables to anon and authenticated by
+-- default, so that has to be taken back explicitly.
+alter table ai_extraction_attempts enable row level security;
+
+revoke all on ai_extraction_attempts from anon;
+revoke all on ai_extraction_attempts from authenticated;
+revoke all on sequence ai_extraction_attempts_id_seq from anon;
+revoke all on sequence ai_extraction_attempts_id_seq from authenticated;
+
+-- ---------- 4. keeping it short-lived ----------
+
+create or replace function purge_old_ai_extraction_attempts(p_days integer default 7)
+returns void language sql security definer set search_path to 'public' as $$
+  delete from ai_extraction_attempts
+   where created_at < now() - make_interval(days => greatest(p_days, 1));
+$$;
+
+revoke all on function purge_old_ai_extraction_attempts(integer) from public, anon, authenticated;
+
+do $$
+begin
+  if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+    raise warning 'pg_cron is not enabled; schedule purge_old_ai_extraction_attempts yourself.';
+    return;
+  end if;
+
+  if exists (select 1 from cron.job where jobname = 'ai-extraction-purge') then
+    perform cron.unschedule('ai-extraction-purge');
+  end if;
+
+  -- Just after the existing sms-purge, so the two tidy-ups sit together.
+  perform cron.schedule(
+    'ai-extraction-purge',
+    '35 3 * * *',
+    'select public.purge_old_ai_extraction_attempts(7);'
+  );
+end $$;
+
+-- ---------- 5. settings ----------
+--
+-- Both read fresh by id-extract on every invocation, so the model and the
+-- limit can be changed with an UPDATE and no redeploy -- the same arrangement
+-- sms_provider has.
+--
+-- gemini-3.1-flash-lite is the cheaper of the two GA Flash-Lite models
+-- ($0.25 in / $1.50 out per 1M tokens, against $0.30 / $2.50 for 3.5).
+-- Verified against Google's pricing page on 2026-10-11.
+--
+-- `on conflict do nothing`, so re-running never resets a value an operator
+-- has changed.
+
+insert into settings (key, value) values
+  ('gemini_model',                '{"value": "gemini-3.1-flash-lite"}'::jsonb),
+  ('gemini_extractions_per_hour', '{"value": 5}'::jsonb)
+on conflict (key) do nothing;

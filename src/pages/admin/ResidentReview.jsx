@@ -12,6 +12,36 @@ import { cleanupSupersededIds, idReviewSupported, needsIdReview } from '../../li
 const STATUS_TONE = { approved: 'approved', pending: 'pending', rejected: 'rejected', suspended: 'released' }
 
 /**
+ * How the ID number on this registration was obtained.
+ *
+ * None of these say the ID is genuine -- nothing in this system can. They say
+ * whether the number was checked against the document, and by what.
+ *
+ * Null means the registration predates the column, so nothing is claimed
+ * about it either way and no note is shown.
+ */
+const ID_VERIFICATION = {
+  auto_verified: {
+    tone: null,
+    icon: 'check',
+    title: 'Number matched the document',
+    body: 'The number the resident typed was read independently off the photo and matched. That is not proof the ID is genuine — check the document itself as usual.',
+  },
+  ai_extracted: {
+    tone: 'danger',
+    icon: 'alert',
+    title: 'Number was read off the photo, not checked',
+    body: 'AI read this number out of the uploaded photo and filled it in for the resident, so it has not been compared against anything independently. Read the number off the document yourself before approving.',
+  },
+  pending_manual: {
+    tone: 'danger',
+    icon: 'alert',
+    title: 'Number could not be checked',
+    body: 'No automatic check of this number was possible. Read it off the document yourself before approving.',
+  },
+}
+
+/**
  * Verifying a registration, and confirming a biometric enrollment in person.
  *
  * Both go through SECURITY DEFINER functions rather than a direct update:
@@ -321,6 +351,20 @@ export default function ResidentReview() {
                   </div>
                 ))}
               </div>
+
+              {/* Where the ID number came from. Absent on registrations that
+                  predate the column, which claim nothing either way. */}
+              {ID_VERIFICATION[p.id_verification] && (
+                <div style={{ marginTop: 18 }}>
+                  <Notice
+                    tone={ID_VERIFICATION[p.id_verification].tone ?? undefined}
+                    icon={ID_VERIFICATION[p.id_verification].icon}
+                    title={ID_VERIFICATION[p.id_verification].title}
+                  >
+                    {ID_VERIFICATION[p.id_verification].body}
+                  </Notice>
+                </div>
+              )}
             </div>
           </Card>
 

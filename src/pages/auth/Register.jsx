@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,9 +11,8 @@ import { longDate } from '../../lib/formatters'
 import { MainLogo } from '../../components/MainLogo'
 import { optionalNumber } from '../../lib/formFields'
 import { ID_ACCEPT_ATTR, validateIdFile } from '../../lib/idFile'
-import { idCheckLabel, idCheckMessage } from '../../lib/idCheck'
-import { normalizeIdNumber } from '../../lib/idNumber'
-import { useIdNumberCheck } from '../../hooks/useIdNumberCheck'
+import { idCheckLabel, idCheckMessage, idVerdict } from '../../lib/idCheck'
+import { extractIdFields, extractionProblem, supabaseInvoker } from '../../lib/idExtract'
 import {
   MIN_REGISTRATION_AGE,
   isOldEnoughToRegister,
@@ -89,9 +88,15 @@ export default function Register() {
   const [data, setData] = useState({})
   const [idFile, setIdFile] = useState(null)
   const [submitError, setSubmitError] = useState(null)
+
+  // How the ID number got into the form, reported by step 1 when it is
+  // completed. Never 'auto_verified': the comparison happens in the browser,
+  // and guard_profile_columns refuses that claim from a resident because the
+  // server cannot tell a real match from a crafted request claiming one.
+  const [idProvenance, setIdProvenance] = useState(null)
+
   // Which confident match has already carried the resident forward. Kept here
   // so it survives StepOne unmounting and remounting.
-  const autoAdvancedRef = useRef(null)
 
   const goto = (n) => {
     setStep(n)
@@ -136,9 +141,14 @@ export default function Register() {
                 setData((d) => ({ ...d, ...values }))
                 goto(2)
               }}
+              // address_line lives on step 2, so a value read off the ID is
+              // parked here until StepTwo mounts and takes it as a default.
+              onExtracted={(extra) => {
+                if (extra && Object.keys(extra).length) setData((d) => ({ ...d, ...extra }))
+              }}
+              onProvenance={setIdProvenance}
               idFile={idFile}
               setIdFile={setIdFile}
-              autoAdvancedRef={autoAdvancedRef}
             />
           )}
 
@@ -171,20 +181,46 @@ export default function Register() {
 
 /* ------------------------------------------------------------------ */
 
-function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
+function StepOne({
+  defaults,
+  onNext,
+  onExtracted,
+  onProvenance,
+  idFile,
+  setIdFile,
+}) {
   const [fileError, setFileError] = useState(null)
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
+    getValues,
     formState: { errors },
   } = useForm({ resolver: zodResolver(step1Schema), defaultValues: defaults })
 
-  // The number and the type are watched so the check re-decides as they are
-  // edited. Only a change of FILE re-runs OCR; see useIdNumberCheck.
+  // Reading the ID is opt-in and manual: the box is off by default, and
+  // nothing leaves the device until the button is pressed.
+  const [aiConsent, setAiConsent] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiNotice, setAiNotice] = useState(null)
+
+  // What the reader saw, and what it wrote into the field on the resident's
+  // behalf. The second matters: while the field still holds exactly what was
+  // filled in, the number came out of the photograph and nothing is verified.
+  // The moment the resident edits it, it is their own reading of the card and
+  // the comparison becomes worth making.
+  const [aiRead, setAiRead] = useState(null)
+  const [aiFilled, setAiFilled] = useState(null)
+  const [aiStatus, setAiStatus] = useState('idle')
+
   const typedNumber = watch('valid_id_number')
-  const typedType = watch('valid_id_type')
-  const idCheck = useIdNumberCheck({ file: idFile, entered: typedNumber, idType: typedType })
+
+  const idCheck = idVerdict({
+    typed: aiFilled && typedNumber === aiFilled ? '' : typedNumber,
+    read: aiRead,
+    status: aiBusy ? 'reading' : aiStatus,
+  })
   const checkMessage = idCheckMessage(idCheck)
   const checkLabel = idCheckLabel(idCheck)
 
@@ -200,6 +236,80 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
       return
     }
     setIdFile(file)
+    // A new document invalidates anything read off the old one.
+    setAiNotice(null)
+    setAiRead(null)
+    setAiFilled(null)
+    setAiStatus('idle')
+  }
+
+  /**
+   * Read the uploaded ID and fill the blanks.
+   *
+   * Nothing here verifies anything. The number comes OUT of the photograph,
+   * so comparing it against that same photograph proves nothing -- which is
+   * why a number filled from here is reported as `ai_extracted` and checked
+   * by the secretary rather than treated as a match.
+   */
+  async function readMyId() {
+    setAiNotice(null)
+    setAiBusy(true)
+
+    const result = await extractIdFields({
+      file: idFile,
+      current: getValues(),
+      // Not a bare functions.invoke: that reports every non-2xx as a generic
+      // error and throws the function's own sentence away. See idExtract.js.
+      invoke: supabaseInvoker(supabase),
+    })
+
+    setAiBusy(false)
+
+    if (!result.ok) {
+      // Not a verdict on the resident: the reader could not run. They carry
+      // on, flagged, because there is no offline reader to fall back to.
+      setAiStatus('unavailable')
+      setAiNotice({ tone: 'danger', text: result.message })
+      return
+    }
+
+    setAiStatus('done')
+    setAiRead(result.readNumber ?? null)
+
+    // address_line belongs to step 2; everything else is on this form.
+    const extra = {}
+    let filled = 0
+    for (const [key, value] of Object.entries(result.fields)) {
+      if (key === 'address_line') {
+        extra[key] = value
+      } else {
+        setValue(key, value, { shouldValidate: true, shouldDirty: true })
+      }
+      filled += 1
+    }
+    if (Object.keys(extra).length) onExtracted?.(extra)
+
+    // The number is written only into an EMPTY box. If the resident has
+    // already typed one it is left alone and compared instead -- that is the
+    // only case in this flow where a match means anything.
+    const typedAlready = String(getValues('valid_id_number') ?? '').trim()
+    if (!typedAlready && result.readNumber) {
+      setValue('valid_id_number', result.readNumber, { shouldValidate: true, shouldDirty: true })
+      setAiFilled(result.readNumber)
+      filled += 1
+    }
+
+    setAiNotice(
+      filled === 0
+        ? {
+            tone: 'danger',
+            text: 'Nothing could be read from that photo, or everything it read was already filled in. Type the details in instead.',
+          }
+        : {
+            tone: 'ok',
+            text: `Filled ${filled} empty ${filled === 1 ? 'field' : 'fields'}. Check every one against your ID before continuing — the barangay secretary will check them too.`,
+          },
+    )
   }
 
   function submit(values) {
@@ -207,37 +317,20 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
       setFileError('A photo of your valid ID is required.')
       return
     }
-    // Still reading. Not a refusal -- there is simply no answer yet, and
-    // letting the step through now would mean a mismatch verdict arriving
-    // after the resident had already moved on. The button is disabled while
-    // this is true; this guard is what makes that more than cosmetic.
-    if (!idCheck.ready) return
-    // Only an exact match gets past this step. Every other outcome -- a
-    // mismatch, an unreadable number, a PDF that would not render, an engine
-    // that could not run -- stops the resident here. See lib/idCheck.js.
+    // A mismatch is the only outcome that stops anyone: the resident typed a
+    // number and the reader saw a different one on the card. Everything else
+    // -- unread, unavailable, never attempted -- goes through flagged, since
+    // there is no offline reader left to fall back on. See lib/idCheck.js.
     if (idCheck.blocking) return
+
+    onProvenance?.(idCheck.provenance)
     onNext(values)
   }
 
-  // After a confident match there is nothing left to decide on this step, so
-  // it carries the resident forward rather than making them press Continue
-  // again. Submission still happens only on the summary, by hand.
-  //
-  // Once per match, though. The ref lives in the parent and outlives this
-  // step, so coming back from the summary to change something does not get
-  // bounced straight forward again by the match that is already on file.
-  // Editing the number or swapping the document makes a new key, and the
-  // fresh match then advances as before.
-  const advance = handleSubmit(submit)
-  const matchKey =
-    idFile && idCheck.status === 'match'
-      ? `${idFile.name}:${idFile.size}:${normalizeIdNumber(typedNumber)}`
-      : null
-  useEffect(() => {
-    if (!matchKey || autoAdvancedRef.current === matchKey) return
-    autoAdvancedRef.current = matchKey
-    advance()
-  }, [matchKey, advance, autoAdvancedRef])
+  // There is no auto-advance any more. It existed because the OCR verdict
+  // arrived on its own, in the background, and a confident match left nothing
+  // to decide. The reader now runs only when the resident presses a button,
+  // and after it fills six fields they should look at them before moving on.
 
   return (
     <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
@@ -433,6 +526,54 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
                     {fileError}
                   </span>
                 )}
+
+                {/* Reading the ID with AI. Off by default, and the only place
+                    in this system where a resident's document leaves their
+                    device for anyone but the barangay, so the box says so
+                    plainly and nothing happens until it is ticked AND the
+                    button is pressed. */}
+                {idFile && (
+                  <div className="airead">
+                    <Check
+                      checked={aiConsent}
+                      onChange={(e) => {
+                        setAiConsent(e.target.checked)
+                        setAiNotice(null)
+                      }}
+                      title="Let AI read my ID and fill in the blanks"
+                      description="A reduced copy of your photo is sent to Google's Gemini service to read the printed text. It fills your name, birth date and address — but not your ID number, which you type yourself so it can be checked against the photo. Nothing is kept at Google, and it never approves your registration: the barangay secretary still checks your ID by hand. Leave this unticked to type everything yourself."
+                    />
+
+                    <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
+                      <Button
+                        type="button"
+                        size="s"
+                        auto
+                        variant="secondary"
+                        icon="scan"
+                        disabled={!aiConsent || aiBusy || !!extractionProblem(idFile)}
+                        onClick={readMyId}
+                      >
+                        {aiBusy ? 'Reading your ID…' : 'Read my ID for me'}
+                      </Button>
+
+                      {extractionProblem(idFile) && aiConsent && (
+                        <span style={{ fontSize: 13, color: 'var(--ink-500)', alignSelf: 'center' }}>
+                          {extractionProblem(idFile)}
+                        </span>
+                      )}
+                    </div>
+
+                    {aiNotice && (
+                      <span
+                        className={aiNotice.tone === 'danger' ? 'help help-err' : 'help'}
+                        role={aiNotice.tone === 'danger' ? 'alert' : 'status'}
+                      >
+                        {aiNotice.text}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -447,18 +588,18 @@ function StepOne({ defaults, onNext, idFile, setIdFile, autoAdvancedRef }) {
               flexWrap: 'wrap',
             }}
           >
-            {/* Disabled while the uploaded ID is being read, so the resident
-                cannot step past a verdict that has not arrived yet. */}
+            {/* Blocked only by a mismatch, and only while the reader is
+                actually running. Nothing else here is a refusal. */}
             <Button
               type="submit"
               auto
-              iconRight={idCheck.ready && !idCheck.blocking ? 'arrow' : undefined}
-              disabled={!idCheck.ready || idCheck.blocking}
+              iconRight={!aiBusy && !idCheck.blocking ? 'arrow' : undefined}
+              disabled={aiBusy || idCheck.blocking}
             >
-              {!idCheck.ready
-                ? 'Checking your ID…'
+              {aiBusy
+                ? 'Reading your ID…'
                 : idCheck.blocking
-                  ? 'Check the ID details to continue'
+                  ? 'Correct the ID number to continue'
                   : 'Continue to household details'}
             </Button>
           </div>
@@ -718,6 +859,7 @@ function StepThree({ data, idFile, onBack, onEdit, onError, onDone }) {
           valid_id_type: data.valid_id_type,
           valid_id_number: data.valid_id_number.trim(),
           valid_id_path: validIdPath,
+          ...(idProvenance ? { id_verification: idProvenance } : {}),
         })
         .eq('id', userId)
       if (profileError) throw profileError
