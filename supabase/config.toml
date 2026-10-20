@@ -26,6 +26,13 @@ verify_jwt = true
 # IP instead, and refuses outright if that limit is not configured.
 verify_jwt = false
 
+[functions.sms-diagnose]
+# Same reasoning as sms-dispatch, and the same shared secret. Without this
+# entry the CLI would default verify_jwt to true, which would reject the
+# cron/operator calls that authenticate with x-sms-dispatch-secret instead.
+# It can only GET from Semaphore, so it cannot send.
+verify_jwt = false
+
 [functions.sms-dispatch]
 # Not laxer than face-login, stricter. verify_jwt would accept any resident's
 # token and then let them drain the SMS queue; this function checks a

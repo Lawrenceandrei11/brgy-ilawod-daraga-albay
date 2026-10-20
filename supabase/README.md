@@ -80,11 +80,11 @@ first impression. Five steps, in order.
      queued message, not an announcement: in test mode a notice to twenty
      residents is twenty paid texts to your own phone. `sms_daily_cap` is the
      spending guard.
-   - **Sender Name** comes from `settings.sms_semaphore_sendername`. Left
-     unset, none is sent and Semaphore uses the account's default; an account
-     with no approved name has none and refuses the text. Use `SEMAPHORE`
-     until the barangay's own name is approved, then set it to that name. A
-     name still pending approval is refused.
+   - **Sender Name** comes from `settings.sms_semaphore_sendername` and is
+     `BRGYILAWOD` for this barangay. Left unset, none is sent and Semaphore
+     uses the account's default; an account with no approved name has none and
+     refuses the text. A name that is pending, or approved on some networks
+     only, is refused by the networks that have not approved it.
    - **Accepted is not delivered.** `status = sent` means Semaphore took the
      message. `provider_response.message_id` is the one to look up in the
      Semaphore dashboard, which shows whether the network delivered it.
@@ -160,43 +160,41 @@ Worth stating precisely, because it is easy to overclaim:
 So "nobody can read the face data" is true of the vector and false of the
 metadata. The paper should say the former.
 
-## SMS providers
+## The SMS provider
 
-Two providers are wired in and exactly one is active, chosen by the
-`sms_provider` setting. Nothing else about SMS changes with the provider:
-the queue, the pacing, the retry policy, the daily cap, the test redirect and
-the `sms_messages` log are all provider-neutral.
+**Semaphore is the only provider.** httpSMS was wired in alongside it for one
+reason -- it relayed through an Android handset on an ordinary SIM, so it
+needed no telco approval and could carry a demonstration while the barangay's
+Sender Name was in review. That review finished: `BRGYILAWOD` is approved on
+Globe and Smart, a real text arrived showing it as the sender, and the handset
+relay has been removed.
 
 | Setting | Value | Meaning |
 | --- | --- | --- |
-| `sms_provider` | `semaphore` | `httpsms` | Which one sends. Anything unrecognised falls back to `semaphore`. |
-| `sms_semaphore_sendername` | e.g. `BRGYILAWOD` | Semaphore only. The approved Sender Name. |
-| `httpsms_from` | e.g. `+639XXXXXXXXX` | httpSMS only. The number of the Android phone signed in to the account. |
+| `sms_provider` | `semaphore` | The only accepted value. Empty counts as `semaphore`; anything else makes the dispatcher refuse rather than send under a provider nobody chose. |
+| `sms_semaphore_sendername` | `BRGYILAWOD` | The approved Sender Name. Read from this row on every invocation, never hardcoded, so it can change without a deploy. Unset means none is sent, and an account with no approved default then refuses the text. |
 
-Each provider has its own secret, so switching back does not mean putting the
-other one's key back:
+One secret, Semaphore's:
 
 ```
 supabase secrets set SMS_API_KEY=<Semaphore key>
-supabase secrets set HTTPSMS_API_KEY=<httpSMS key>
 ```
 
-**Semaphore** is the barangay's real provider. It refuses to send until the
-telcos approve the Sender Name, which is why `httpsms` is active for now.
+**There is no second provider to fall back to, deliberately.** If Semaphore is
+down, messages wait in the queue and retry on the existing backoff. A fallback
+that shows residents an unknown mobile number instead of the barangay's name
+is not a fallback worth having.
 
-**httpSMS** relays through an Android handset on an ordinary SIM, so it needs
-nobody's approval. The cost is that residents see that handset's mobile
-number rather than `BRGYILAWOD`: the message is a real SMS from a real SIM,
-and no app on a phone can set an alphanumeric sender. The phone also has to be
-on, in signal and in credit, or messages sit in the queue.
+Two Semaphore facts that outlive any provider choice:
 
-Switching back once BRGYILAWOD is approved is two rows and no deploy, because
-the function re-reads its settings on every invocation:
-
-```sql
-update settings set value = '{"value": "semaphore"}'::jsonb  where key = 'sms_provider';
-update settings set value = '{"value": "BRGYILAWOD"}'::jsonb where key = 'sms_semaphore_sendername';
-```
+- **Accepted is not delivered.** `status = sent` means Semaphore took the
+  message. `provider_response.message_id` is the id to look up; Semaphore
+  exposes no delivery receipt, so only the handset proves arrival.
+- **Check the `network` field in `provider_response`.** A network that does not
+  match the number's prefix means Semaphore misrouted it -- accepted, billed
+  and undeliverable. That is what happened to message 282834693, sent to a
+  DITO number that Semaphore reported as "Sun". The `sms-diagnose` function
+  exists to read this back.
 
 ## Demo accounts
 

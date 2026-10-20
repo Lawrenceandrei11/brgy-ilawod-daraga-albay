@@ -1,9 +1,9 @@
 // ============================================================
-// sms-dispatch — the only holder of the SMS API keys
+// sms-dispatch — the only holder of the SMS API key
 //
 // The app is a browser-only SPA, so any key it could reach is a key the whole
 // internet can read out of the JS bundle. This function is where the key
-// lives, exactly as face-login is where the service role key lives.
+// lives, exactly as face-login is the only holder of the service role key.
 //
 // It is deliberately dumb. It does not decide who to text, when, or how fast:
 // claim_sms() in Postgres does all of that, because pacing has to survive
@@ -13,52 +13,46 @@
 // Called once every ten seconds by pg_cron, but only when there is work.
 //
 // ---------------------------------------------------------------------------
-// Two providers, one at a time.
+// One provider: Semaphore, sender name BRGYILAWOD.
 //
-// Semaphore is the barangay's real provider, but it refuses to send until the
-// telcos approve the Sender Name BRGYILAWOD, and that queue is outside anyone
-// here's control. httpSMS sends through an Android handset on an ordinary SIM
-// instead, which needs nobody's approval, so the system can be demonstrated
-// end to end while the real sender name is waiting.
+// httpSMS used to sit beside it. It relayed through an Android handset on an
+// ordinary SIM, which needed nobody's approval, and it existed only so the
+// system could be demonstrated end to end while the telcos reviewed the
+// barangay's Sender Name. That review finished: BRGYILAWOD is approved on
+// Globe and Smart, a real text arrived on a real handset showing it as the
+// sender, and the handset relay has been removed.
 //
-// Which one is used is the `sms_provider` setting, read fresh on every
-// invocation like the rest of them, so switching back to Semaphore the day
-// BRGYILAWOD is approved is one row in `settings` and no deploy.
+// What that removal cost, deliberately: there is no second provider to fall
+// back to. If Semaphore is down, messages wait in the queue and retry. That
+// is the right trade -- a fallback that shows residents a random mobile
+// number instead of the barangay's name is not a fallback anyone wanted.
 //
-// The difference between them is confined to the two send functions below.
-// Everything else -- the queue, the pacing, the retry policy, the daily cap,
-// the test redirect and the log -- is provider-neutral and untouched.
-//
-// Honest limitation of httpSMS: the message leaves a real SIM, so residents
-// see that handset's mobile number, not "BRGYILAWOD". No app on a phone can
-// set an alphanumeric sender; only the telco can.
+// The sender name is NOT hardcoded. It is `settings.sms_semaphore_sendername`,
+// read fresh on every invocation like the rest of them, so the barangay can
+// change it without a deploy.
 // ---------------------------------------------------------------------------
+//
+// The pure decisions -- which failures to retry, how to shape the request and
+// the stored response, what counts as a valid provider setting -- live in
+// ./semaphore.ts so that `npm test` can cover them. BOTH FILES must be
+// deployed together.
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10'
 import { timingSafeEqual } from 'https://deno.land/std@0.224.0/crypto/timing_safe_equal.ts'
-
-// Semaphore's official API. This used to point at a free third-party relay
-// (smsapiph.onrender.com) that issued its own keys, capped itself at 30 texts
-// a day and answered "sent" with no way to confirm delivery. A Semaphore key
-// sent there is rejected as "Invalid API key format".
-const SEMAPHORE_URL = 'https://api.semaphore.co/api/v4/messages'
-
-// httpSMS relays through an Android phone that is signed in to the account.
-// It takes JSON and full E.164 numbers, which is already how recipients are
-// stored, so unlike Semaphore nothing has to be reshaped.
-const HTTPSMS_URL = 'https://api.httpsms.com/v1/messages/send'
-
-// Semaphore is not on a sleeping free tier, so there is no cold start to wait
-// out. Long enough for a slow network, short enough that a hung request does
-// not hold up the queue.
-const REQUEST_TIMEOUT_MS = 30_000
-
-const MAX_ATTEMPTS = 6
-
-// Tens of seconds to minutes, not the 1s-to-32s the provider's docs suggest.
-// That advice assumes an in-process retry loop; with a queue, waiting is free.
-const BACKOFF_SECONDS = [30, 60, 120, 240, 480, 960]
+import {
+  backoffFor,
+  buildSemaphoreForm,
+  classifySemaphore,
+  classifyTransportError,
+  MAX_ATTEMPTS,
+  type Outcome,
+  REQUEST_TIMEOUT_MS,
+  resolveProvider,
+  SEMAPHORE_URL,
+  shapeSemaphoreResponse,
+  toE164,
+} from './semaphore.ts'
 
 // Deliberately no CORS headers, unlike face-login. This is a server-to-server
 // endpoint. Without an Access-Control-Allow-Origin a browser cannot read the
@@ -72,67 +66,6 @@ function json(body: unknown, status = 200) {
 
 function encode(s: string) {
   return new TextEncoder().encode(s)
-}
-
-/**
- * The TypeScript twin of normalize_ph_mobile() in migration 16, kept in step
- * with it. It exists for one caller: sms_test_recipient, which is the only
- * number reaching this function that Postgres has not already normalised.
- */
-function toE164(mobile: string): string | null {
-  const d = String(mobile).replace(/[^0-9]/g, '')
-  if (/^00639[0-9]{9}$/.test(d)) return '+' + d.slice(2)
-  if (/^639[0-9]{9}$/.test(d)) return '+' + d
-  if (/^09[0-9]{9}$/.test(d)) return '+63' + d.slice(1)
-  if (/^9[0-9]{9}$/.test(d)) return '+63' + d
-  return null
-}
-
-/**
- * Semaphore documents 09XXXXXXXXX and 639XXXXXXXXX; the leading + is not
- * documented, so it is dropped. The log keeps E.164 in `sent_to`.
- */
-function toSemaphoreNumber(e164: string): string {
-  return e164.replace(/^\+/, '')
-}
-
-/**
- * Semaphore's error shapes are undocumented. Validation failures tend to come
- * back as an object of field -> messages, so pull out the first readable
- * string rather than showing staff raw JSON in the Text messages screen.
- */
-function providerError(body: unknown): string | null {
-  if (typeof body === 'string') return body
-  // Errors can also arrive wrapped in an array: [{"senderName": "..."}].
-  if (Array.isArray(body)) {
-    for (const item of body) {
-      const found = providerError(item)
-      if (found) return found
-    }
-    return null
-  }
-  if (!body || typeof body !== 'object') return null
-  for (const v of Object.values(body as Record<string, unknown>)) {
-    if (typeof v === 'string') return v
-    if (Array.isArray(v) && typeof v[0] === 'string') return v[0]
-  }
-  return null
-}
-
-// The request fields Semaphore names when it refuses a message. A 5xx that
-// names one of these is a refusal about this request, not an outage.
-const REQUEST_FIELDS = ['senderName', 'sendername', 'number', 'apikey']
-
-function fieldError(body: unknown): string | null {
-  for (const item of Array.isArray(body) ? body : [body]) {
-    if (!item || typeof item !== 'object') continue
-    for (const f of REQUEST_FIELDS) {
-      const v = (item as Record<string, unknown>)[f]
-      if (typeof v === 'string') return v
-      if (Array.isArray(v) && typeof v[0] === 'string') return v[0]
-    }
-  }
-  return null
 }
 
 /**
@@ -150,224 +83,7 @@ function authorised(req: Request): boolean {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-type Outcome =
-  | { kind: 'sent'; response: unknown }
-  | { kind: 'failed'; error: string; response: unknown }
-  | { kind: 'retry'; error: string; response: unknown; afterSeconds?: number }
-
-type SemaphoreMessage = { message_id?: number | string; status?: string }
-
-function firstMessage(body: unknown): SemaphoreMessage | undefined {
-  return Array.isArray(body) ? (body[0] as SemaphoreMessage | undefined) : undefined
-}
-
-/**
- * Which failures are worth trying again is the whole game here. Every
- * Semaphore send costs a credit, so retrying a request that can only fail the
- * same way is paying for nothing; not retrying an outage loses a real
- * notification.
- */
-function classifySemaphore(status: number, body: unknown, retryAfter: string | null): Outcome {
-  if (status >= 200 && status < 300) {
-    // Success is an array with one message object per number. Anything else
-    // inside a 2xx -- an object of validation errors, a bare string -- means
-    // nothing was handed to the network, so it must not be logged as sent.
-    const msg = firstMessage(body)
-    if (!msg?.message_id) {
-      return {
-        kind: 'failed',
-        error: `Semaphore did not accept the message: ${providerError(body) ?? 'unexpected response'}`,
-        response: body,
-      }
-    }
-    // Accepted is not delivered. Queued, Pending and Sent all mean Semaphore
-    // took it; the message_id is how to look up what the network did next.
-    if (msg.status === 'Failed' || msg.status === 'Refunded') {
-      return { kind: 'failed', error: `Semaphore reported the message as ${msg.status}.`, response: body }
-    }
-    return { kind: 'sent', response: body }
-  }
-
-  if (status === 401 || status === 403) {
-    // One loud row rather than six identical ones per message.
-    console.error('sms-dispatch: SMS_API_KEY is rejected by Semaphore.')
-    return {
-      kind: 'failed',
-      error: `Semaphore rejected the API key (${status}). Check SMS_API_KEY.`,
-      response: body,
-    }
-  }
-
-  if (status === 429) {
-    const after = retryAfter ? Number(retryAfter) : NaN
-    return {
-      kind: 'retry',
-      error: 'Rate limited by Semaphore (429).',
-      response: body,
-      afterSeconds: Number.isFinite(after) ? after : undefined,
-    }
-  }
-
-  if (status >= 500) {
-    // Semaphore reports some refusals as a 500: a missing sender name comes
-    // back as 500 with [{"senderName": "..."}]. Retrying only repeats the
-    // refusal, so those fail at once. A bare 5xx is a fault on Semaphore's
-    // side that may clear up, and in a queue waiting is free.
-    const reason = fieldError(body)
-    if (reason) {
-      return { kind: 'failed', error: `Semaphore refused the message: ${reason}`, response: body }
-    }
-    return { kind: 'retry', error: `Semaphore returned ${status}.`, response: body }
-  }
-
-  // Any other 4xx is about this request -- a bad number, sender name or no
-  // credits. Sending it again would fail the same way.
-  return {
-    kind: 'failed',
-    error: `Semaphore refused the message (${status}): ${providerError(body) ?? 'no reason given'}`,
-    response: body,
-  }
-}
-
-/**
- * Semaphore. Form-encoded with the key as a field, which is the only way it
- * takes one, and the number with the leading + stripped. Unchanged from when
- * it was the only provider: this is the path the barangay goes back to once
- * BRGYILAWOD is approved.
- */
-async function sendViaSemaphore(
-  apiKey: string,
-  destination: string,
-  body: string,
-  senderName: string,
-): Promise<{ outcome: Outcome; response: unknown }> {
-  const form = new URLSearchParams({
-    apikey: apiKey,
-    number: toSemaphoreNumber(destination),
-    message: body,
-  })
-  // sendername only when configured; naming one that is not yet approved is
-  // refused outright.
-  if (senderName) form.set('sendername', senderName)
-
-  const res = await fetch(SEMAPHORE_URL, {
-    method: 'POST',
-    body: form,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
-
-  const parsed = await readBody(res)
-  const first = firstMessage(parsed)
-  const response = {
-    provider: 'semaphore',
-    http_status: res.status,
-    rate_limit_remaining: res.headers.get('x-ratelimit-remaining'),
-    message_id: first?.message_id ?? null,
-    semaphore_status: first?.status ?? null,
-    body: parsed,
-  }
-
-  return { outcome: classifySemaphore(res.status, parsed, res.headers.get('retry-after')), response }
-}
-
-/**
- * httpSMS. JSON, the key in a header, and both numbers in full E.164.
- *
- * `from` is not a choice: it must be the number of the Android phone signed
- * in to the account, because that handset is what actually sends the message.
- */
-async function sendViaHttpSms(
-  apiKey: string,
-  destination: string,
-  body: string,
-  from: string,
-): Promise<{ outcome: Outcome; response: unknown }> {
-  const res = await fetch(HTTPSMS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-    body: JSON.stringify({ from, to: destination, content: body }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
-
-  const parsed = await readBody(res)
-  const data = (parsed as { data?: { id?: string; status?: string } } | null)?.data
-  const response = {
-    provider: 'httpsms',
-    http_status: res.status,
-    // Same field name Semaphore's branch writes, so the Text messages screen
-    // and anything reading the log do not have to know which provider sent it.
-    message_id: data?.id ?? null,
-    httpsms_status: data?.status ?? null,
-    body: parsed,
-  }
-
-  return { outcome: classifyHttpSms(res.status, parsed, res.headers.get('retry-after')), response }
-}
-
-/**
- * The same judgement as Semaphore's, against httpSMS's own answers.
- *
- * The phone is the part that breaks here, not the API: a handset that is off,
- * out of signal or out of load is a reason to wait, not to give up, so those
- * are retried rather than failed.
- */
-function classifyHttpSms(status: number, body: unknown, retryAfter: string | null): Outcome {
-  if (status >= 200 && status < 300) {
-    const data = (body as { data?: { id?: string } } | null)?.data
-    // Accepted means httpSMS has it, not that the handset has sent it. Without
-    // an id nothing was queued, so it must not be logged as sent.
-    if (!data?.id) {
-      return {
-        kind: 'failed',
-        error: `httpSMS did not accept the message: ${providerError(body) ?? 'no message id returned'}`,
-        response: body,
-      }
-    }
-    return { kind: 'sent', response: body }
-  }
-
-  if (status === 401 || status === 403) {
-    // One loud row rather than six identical ones per message.
-    console.error('sms-dispatch: HTTPSMS_API_KEY is rejected by httpSMS.')
-    return {
-      kind: 'failed',
-      error: `httpSMS rejected the API key (${status}). Check HTTPSMS_API_KEY.`,
-      response: body,
-    }
-  }
-
-  if (status === 429) {
-    const after = retryAfter ? Number(retryAfter) : NaN
-    return {
-      kind: 'retry',
-      error: 'Rate limited by httpSMS (429).',
-      response: body,
-      afterSeconds: Number.isFinite(after) ? after : undefined,
-    }
-  }
-
-  // 402 is out of credit and 404 is usually a `from` number that no phone is
-  // signed in with. Both are settings problems that another attempt repeats.
-  if (status === 402 || status === 404 || status === 422) {
-    return {
-      kind: 'failed',
-      error: `httpSMS refused the message (${status}): ${providerError(body) ?? 'no reason given'}`,
-      response: body,
-    }
-  }
-
-  if (status >= 500) {
-    return { kind: 'retry', error: `httpSMS returned ${status}.`, response: body }
-  }
-
-  return {
-    kind: 'failed',
-    error: `httpSMS refused the message (${status}): ${providerError(body) ?? 'no reason given'}`,
-    response: body,
-  }
-}
-
-/** Error shapes are undocumented on both sides, so keep whatever came back. */
+/** Error shapes are undocumented, so keep whatever came back. */
 async function readBody(res: Response): Promise<unknown> {
   const text = await res.text()
   try {
@@ -375,6 +91,38 @@ async function readBody(res: Response): Promise<unknown> {
   } catch {
     return { raw: text }
   }
+}
+
+/**
+ * Semaphore. Form-encoded with the key as a field, which is the only way it
+ * takes one, and the number with the leading + stripped.
+ */
+async function sendViaSemaphore(
+  apiKey: string,
+  destination: string,
+  body: string,
+  senderName: string,
+): Promise<{ outcome: Outcome; response: unknown }> {
+  const res = await fetch(SEMAPHORE_URL, {
+    method: 'POST',
+    body: buildSemaphoreForm(apiKey, destination, body, senderName),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+
+  const parsed = await readBody(res)
+  const response = shapeSemaphoreResponse(
+    res.status,
+    parsed,
+    res.headers.get('x-ratelimit-remaining'),
+  )
+
+  // One loud row rather than six identical ones per message. Named, never
+  // echoed.
+  if (res.status === 401 || res.status === 403) {
+    console.error('sms-dispatch: SMS_API_KEY is rejected by Semaphore.')
+  }
+
+  return { outcome: classifySemaphore(res.status, parsed, res.headers.get('retry-after')), response }
 }
 
 Deno.serve(async (req) => {
@@ -397,7 +145,6 @@ Deno.serve(async (req) => {
         'sms_test_recipient',
         'sms_semaphore_sendername',
         'sms_provider',
-        'httpsms_from',
       ])
 
     const setting = (k: string) => settings?.find((s) => s.key === k)?.value?.value
@@ -409,39 +156,29 @@ Deno.serve(async (req) => {
     // out which and records it.
     const batch = Math.max(1, Math.min(Number(setting('sms_batch_per_invocation') ?? 1), 10))
 
-    // The Semaphore Sender Name, if one is set. Not sms_sender_label, which is
-    // the "Brgy Ilawod:" prefix inside the message. Unset means none is sent
-    // and Semaphore falls back to the account default -- which an account
-    // with no approved name does not have, so set "SEMAPHORE" until the
-    // barangay's own name is approved, then switch to that.
-    const senderName = String(setting('sms_semaphore_sendername') ?? '').trim()
+    // Checked before anything is claimed. A provider this deployment cannot
+    // honour is a configuration mistake, and refusing leaves the queue intact
+    // rather than burning an attempt per message on a row that is fine.
+    const providerCheck = resolveProvider(setting('sms_provider'))
+    if (!providerCheck.ok) {
+      console.error(`sms-dispatch: ${providerCheck.error}`)
+      return json({ error: providerCheck.error }, 500)
+    }
 
-    // Which provider sends. Defaults to semaphore, so an unset or misspelled
-    // value falls back to the barangay's real provider rather than silently
-    // routing through a handset.
-    const provider = String(setting('sms_provider') ?? 'semaphore').trim().toLowerCase() === 'httpsms'
-      ? 'httpsms'
-      : 'semaphore'
-
-    // Each provider has its own key, so switching back does not mean putting
-    // the other one's secret back.
-    const apiKey = provider === 'httpsms'
-      ? Deno.env.get('HTTPSMS_API_KEY')
-      : Deno.env.get('SMS_API_KEY')
+    const apiKey = Deno.env.get('SMS_API_KEY')
     if (!apiKey) {
-      const name = provider === 'httpsms' ? 'HTTPSMS_API_KEY' : 'SMS_API_KEY'
-      console.error(`sms-dispatch: ${name} is not set.`)
-      return json({ error: `${name} is not configured.` }, 500)
+      // Named, never echoed.
+      console.error('sms-dispatch: SMS_API_KEY is not set.')
+      return json({ error: 'SMS_API_KEY is not configured.' }, 500)
     }
 
-    // The handset that sends, when httpSMS is the provider. Checked before a
-    // message is claimed: without it every send would fail at the provider and
-    // burn an attempt on a row that is fine.
-    const httpSmsFrom = toE164(String(setting('httpsms_from') ?? '').trim()) ?? null
-    if (provider === 'httpsms' && !httpSmsFrom) {
-      console.error('sms-dispatch: httpsms_from is missing or not a valid PH mobile.')
-      return json({ error: 'httpsms_from is not configured.' }, 500)
-    }
+    // The Semaphore Sender Name. Not sms_sender_label, which is the
+    // "Brgy Ilawod:" prefix inside the message text. Unset means none is sent
+    // and Semaphore falls back to the account default -- which an account with
+    // no approved name does not have, so it would refuse the text. The
+    // barangay's approved name is BRGYILAWOD and it belongs in this row, not
+    // in this file.
+    const senderName = String(setting('sms_semaphore_sendername') ?? '').trim()
 
     // The mechanism that makes this testable without texting the barangay.
     //
@@ -493,25 +230,13 @@ Deno.serve(async (req) => {
       let outcome: Outcome
       try {
         // Not named `sent`: that is the counter in this scope.
-        const attempt = provider === 'httpsms'
-          ? await sendViaHttpSms(apiKey, destination, row.body, httpSmsFrom!)
-          : await sendViaSemaphore(apiKey, destination, row.body, senderName)
-
+        const attempt = await sendViaSemaphore(apiKey, destination, row.body, senderName)
         outcome = attempt.outcome
-        // The provider's own answer, kept for the Text messages screen: which
-        // provider, what it returned, and the id to look the message up by on
-        // their side. The key is never echoed back, so nothing secret is
-        // stored.
+        // The provider's own answer, kept for the Text messages screen. The
+        // key is never echoed back, so nothing secret is stored.
         outcome.response = attempt.response
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        outcome = {
-          kind: 'retry',
-          error: message.includes('timed out') || message.includes('abort')
-            ? `No answer from the SMS provider within ${REQUEST_TIMEOUT_MS / 1000}s.`
-            : message,
-          response: null,
-        }
+        outcome = classifyTransportError(err instanceof Error ? err.message : String(err))
       }
 
       if (outcome.kind === 'sent') {
@@ -534,8 +259,7 @@ Deno.serve(async (req) => {
         }).eq('id', row.id)
         failed++
       } else {
-        const wait = outcome.afterSeconds
-          ?? BACKOFF_SECONDS[Math.min(row.attempts - 1, BACKOFF_SECONDS.length - 1)]
+        const wait = outcome.afterSeconds ?? backoffFor(row.attempts)
         await admin.from('sms_messages').update({
           status: 'queued',
           next_attempt_at: new Date(Date.now() + wait * 1000).toISOString(),
