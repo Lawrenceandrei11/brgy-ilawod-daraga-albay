@@ -11,8 +11,7 @@ import { longDate } from '../../lib/formatters'
 import { MainLogo } from '../../components/MainLogo'
 import { optionalNumber } from '../../lib/formFields'
 import { ID_ACCEPT_ATTR, validateIdFile } from '../../lib/idFile'
-import { idCheckLabel, idCheckMessage, idVerdict } from '../../lib/idCheck'
-import { extractIdFields, extractionProblem, supabaseInvoker } from '../../lib/idExtract'
+import { idVerdict } from '../../lib/idCheck'
 import {
   MIN_REGISTRATION_AGE,
   isOldEnoughToRegister,
@@ -141,11 +140,6 @@ export default function Register() {
                 setData((d) => ({ ...d, ...values }))
                 goto(2)
               }}
-              // address_line lives on step 2, so a value read off the ID is
-              // parked here until StepTwo mounts and takes it as a default.
-              onExtracted={(extra) => {
-                if (extra && Object.keys(extra).length) setData((d) => ({ ...d, ...extra }))
-              }}
               onProvenance={setIdProvenance}
               idFile={idFile}
               setIdFile={setIdFile}
@@ -181,48 +175,22 @@ export default function Register() {
 
 /* ------------------------------------------------------------------ */
 
-function StepOne({
-  defaults,
-  onNext,
-  onExtracted,
-  onProvenance,
-  idFile,
-  setIdFile,
-}) {
+function StepOne({ defaults, onNext, onProvenance, idFile, setIdFile }) {
   const [fileError, setFileError] = useState(null)
   const {
     register,
     handleSubmit,
-    watch,
-    setValue,
-    getValues,
     formState: { errors },
   } = useForm({ resolver: zodResolver(step1Schema), defaultValues: defaults })
 
-  // Reading the ID is opt-in and manual: the box is off by default, and
-  // nothing leaves the device until the button is pressed.
-  const [aiConsent, setAiConsent] = useState(false)
-  const [aiBusy, setAiBusy] = useState(false)
-  const [aiNotice, setAiNotice] = useState(null)
-
-  // What the reader saw, and what it wrote into the field on the resident's
-  // behalf. The second matters: while the field still holds exactly what was
-  // filled in, the number came out of the photograph and nothing is verified.
-  // The moment the resident edits it, it is their own reading of the card and
-  // the comparison becomes worth making.
-  const [aiRead, setAiRead] = useState(null)
-  const [aiFilled, setAiFilled] = useState(null)
-  const [aiStatus, setAiStatus] = useState('idle')
-
-  const typedNumber = watch('valid_id_number')
-
-  const idCheck = idVerdict({
-    typed: aiFilled && typedNumber === aiFilled ? '' : typedNumber,
-    read: aiRead,
-    status: aiBusy ? 'reading' : aiStatus,
-  })
-  const checkMessage = idCheckMessage(idCheck)
-  const checkLabel = idCheckLabel(idCheck)
+  // No reader means no number is ever read off the photograph, so there is
+  // nothing to compare the typed one against. The verdict is still asked for
+  // rather than assumed: it is what reports `pending_manual` to the profile
+  // write, and it keeps the mismatch gate wired in one place rather than
+  // scattered through the form. With no reading it is always idle -- never
+  // blocking, and with nothing to tell the resident about their number, which
+  // is why no status is shown beneath the field. See lib/idCheck.js.
+  const idCheck = idVerdict({ status: 'idle' })
 
   function chooseFile(e) {
     const file = e.target.files?.[0]
@@ -236,80 +204,6 @@ function StepOne({
       return
     }
     setIdFile(file)
-    // A new document invalidates anything read off the old one.
-    setAiNotice(null)
-    setAiRead(null)
-    setAiFilled(null)
-    setAiStatus('idle')
-  }
-
-  /**
-   * Read the uploaded ID and fill the blanks.
-   *
-   * Nothing here verifies anything. The number comes OUT of the photograph,
-   * so comparing it against that same photograph proves nothing -- which is
-   * why a number filled from here is reported as `ai_extracted` and checked
-   * by the secretary rather than treated as a match.
-   */
-  async function readMyId() {
-    setAiNotice(null)
-    setAiBusy(true)
-
-    const result = await extractIdFields({
-      file: idFile,
-      current: getValues(),
-      // Not a bare functions.invoke: that reports every non-2xx as a generic
-      // error and throws the function's own sentence away. See idExtract.js.
-      invoke: supabaseInvoker(supabase),
-    })
-
-    setAiBusy(false)
-
-    if (!result.ok) {
-      // Not a verdict on the resident: the reader could not run. They carry
-      // on, flagged, because there is no offline reader to fall back to.
-      setAiStatus('unavailable')
-      setAiNotice({ tone: 'danger', text: result.message })
-      return
-    }
-
-    setAiStatus('done')
-    setAiRead(result.readNumber ?? null)
-
-    // address_line belongs to step 2; everything else is on this form.
-    const extra = {}
-    let filled = 0
-    for (const [key, value] of Object.entries(result.fields)) {
-      if (key === 'address_line') {
-        extra[key] = value
-      } else {
-        setValue(key, value, { shouldValidate: true, shouldDirty: true })
-      }
-      filled += 1
-    }
-    if (Object.keys(extra).length) onExtracted?.(extra)
-
-    // The number is written only into an EMPTY box. If the resident has
-    // already typed one it is left alone and compared instead -- that is the
-    // only case in this flow where a match means anything.
-    const typedAlready = String(getValues('valid_id_number') ?? '').trim()
-    if (!typedAlready && result.readNumber) {
-      setValue('valid_id_number', result.readNumber, { shouldValidate: true, shouldDirty: true })
-      setAiFilled(result.readNumber)
-      filled += 1
-    }
-
-    setAiNotice(
-      filled === 0
-        ? {
-            tone: 'danger',
-            text: 'Nothing could be read from that photo, or everything it read was already filled in. Type the details in instead.',
-          }
-        : {
-            tone: 'ok',
-            text: `Filled ${filled} empty ${filled === 1 ? 'field' : 'fields'}. Check every one against your ID before continuing — the barangay secretary will check them too.`,
-          },
-    )
   }
 
   function submit(values) {
@@ -317,20 +211,24 @@ function StepOne({
       setFileError('A photo of your valid ID is required.')
       return
     }
-    // A mismatch is the only outcome that stops anyone: the resident typed a
-    // number and the reader saw a different one on the card. Everything else
-    // -- unread, unavailable, never attempted -- goes through flagged, since
-    // there is no offline reader left to fall back on. See lib/idCheck.js.
+    // Nothing reads the ID, so there is no reading to contradict what the
+    // resident typed and this gate cannot currently fire. It stays because
+    // the rule belongs in one place: if a reader ever returns, a disagreement
+    // must stop the step here rather than in whatever added it.
     if (idCheck.blocking) return
 
+    // Always 'pending_manual' while entry is manual. Asked for rather than
+    // written in, so the form cannot drift from lib/idCheck.js -- and so it
+    // stays honest that nothing here has been verified. The barangay
+    // secretary checks the uploaded document before the account is approved.
     onProvenance?.(idCheck.provenance)
     onNext(values)
   }
 
-  // There is no auto-advance any more. It existed because the OCR verdict
-  // arrived on its own, in the background, and a confident match left nothing
-  // to decide. The reader now runs only when the resident presses a button,
-  // and after it fills six fields they should look at them before moving on.
+  // The resident fills every field themselves and presses Continue. Nothing
+  // advances the step on their behalf, and nothing about the uploaded ID is
+  // inspected here: it goes to the private valid-ids bucket and an authorised
+  // barangay officer reads it during review.
 
   return (
     <div className="grid-2 split" style={{ gap: 28, alignItems: 'start' }}>
@@ -458,29 +356,6 @@ function StepOne({
                 error={errors.valid_id_number?.message}
                 {...register('valid_id_number')}
               />
-              {checkMessage && !errors.valid_id_number && (
-                <span
-                  className={`idcheck idcheck-${idCheck.status}`}
-                  role={idCheck.blocking ? 'alert' : 'status'}
-                >
-                  <Icon
-                    name={
-                      idCheck.status === 'match'
-                        ? 'check'
-                        : idCheck.blocking
-                          ? 'alert'
-                          : idCheck.status === 'reading'
-                            ? 'clock'
-                            : 'info'
-                    }
-                    size="sm"
-                  />
-                  <span>
-                    {checkLabel && <b className="idcheck-tag">{checkLabel}</b>}
-                    {checkMessage}
-                  </span>
-                </span>
-              )}
             </div>
 
             <div className="span-2">
@@ -527,51 +402,18 @@ function StepOne({
                   </span>
                 )}
 
-                {/* Reading the ID with AI. Off by default, and the only place
-                    in this system where a resident's document leaves their
-                    device for anyone but the barangay, so the box says so
-                    plainly and nothing happens until it is ticked AND the
-                    button is pressed. */}
+                {/* ID reading is manual. There is no automatic reader and
+                    nothing about this document is sent anywhere outside the
+                    barangay: it goes to the private valid-ids bucket, and an
+                    authorised barangay officer reads it. */}
                 {idFile && (
                   <div className="airead">
-                    <Check
-                      checked={aiConsent}
-                      onChange={(e) => {
-                        setAiConsent(e.target.checked)
-                        setAiNotice(null)
-                      }}
-                      title="Let AI read my ID and fill in the blanks"
-                      description="A reduced copy of your photo is sent to Google's Gemini service to read the printed text. It fills your name, birth date and address — but not your ID number, which you type yourself so it can be checked against the photo. Nothing is kept at Google, and it never approves your registration: the barangay secretary still checks your ID by hand. Leave this unticked to type everything yourself."
-                    />
-
-                    <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
-                      <Button
-                        type="button"
-                        size="s"
-                        auto
-                        variant="secondary"
-                        icon="scan"
-                        disabled={!aiConsent || aiBusy || !!extractionProblem(idFile)}
-                        onClick={readMyId}
-                      >
-                        {aiBusy ? 'Reading your ID…' : 'Read my ID for me'}
-                      </Button>
-
-                      {extractionProblem(idFile) && aiConsent && (
-                        <span style={{ fontSize: 13, color: 'var(--ink-500)', alignSelf: 'center' }}>
-                          {extractionProblem(idFile)}
-                        </span>
-                      )}
-                    </div>
-
-                    {aiNotice && (
-                      <span
-                        className={aiNotice.tone === 'danger' ? 'help help-err' : 'help'}
-                        role={aiNotice.tone === 'danger' ? 'alert' : 'status'}
-                      >
-                        {aiNotice.text}
-                      </span>
-                    )}
+                    <span className="help" role="status">
+                      Type your ID details into the fields above yourself. Your uploaded ID is
+                      stored privately and checked by an authorised barangay officer before your
+                      account is approved — it is not read automatically and it is not sent to
+                      any outside service.
+                    </span>
                   </div>
                 )}
               </div>
@@ -588,19 +430,13 @@ function StepOne({
               flexWrap: 'wrap',
             }}
           >
-            {/* Blocked only by a mismatch, and only while the reader is
-                actually running. Nothing else here is a refusal. */}
-            <Button
-              type="submit"
-              auto
-              iconRight={!aiBusy && !idCheck.blocking ? 'arrow' : undefined}
-              disabled={aiBusy || idCheck.blocking}
-            >
-              {aiBusy
-                ? 'Reading your ID…'
-                : idCheck.blocking
-                  ? 'Correct the ID number to continue'
-                  : 'Continue to household details'}
+            {/* A mismatch is the only thing here that refuses, and with no
+                reader it cannot currently arise. The gate stays wired so the
+                rule lives in one place. */}
+            <Button type="submit" auto iconRight={!idCheck.blocking ? 'arrow' : undefined} disabled={idCheck.blocking}>
+              {idCheck.blocking
+                ? 'Correct the ID number to continue'
+                : 'Continue to household details'}
             </Button>
           </div>
         </form>

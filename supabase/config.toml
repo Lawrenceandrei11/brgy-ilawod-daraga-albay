@@ -21,9 +21,11 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.id-extract]
-# Registration happens before the resident has an account, so there is no JWT
-# to verify -- the same situation as face-login. The function limits itself by
-# IP instead, and refuses outright if that limit is not configured.
+# RETIRED. This endpoint used to send a resident ID photo to Gemini; it now
+# answers 410 Gone and does nothing else -- no body read, no secret, no
+# network. verify_jwt stays false so that a browser still running an older
+# bundle gets the 410 and its message rather than an authentication error.
+# Remove this entry together with the function, once nothing calls it.
 verify_jwt = false
 
 [functions.sms-diagnose]

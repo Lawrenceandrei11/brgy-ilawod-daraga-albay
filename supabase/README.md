@@ -143,6 +143,71 @@ They are kept as-is rather than squashed, because the applied history is what
 the live database contains and rewriting it would make the files a fiction.
 A fresh `db push` produces the same end state.
 
+## ID reading is manual
+
+Barangay E-Assist does **not** use Gemini, or any other AI or OCR service, to
+read residents' valid IDs. It did between 2026-10-11 and 2026-10-21. It no
+longer does, and the integration has been removed rather than switched off.
+
+### Why
+
+The project's Gemini key was on a **Free tier** project
+(`gen-lang-client-0807970087`). Google's API terms for unpaid use say the
+content you submit is used to improve their products and machine-learning
+technologies, that human reviewers may read it, and — in as many words — *"Do
+not submit sensitive, confidential, or personal information to the Unpaid
+Services"*. A photograph of a resident's government ID is exactly that, and
+the barangay is its data controller.
+
+Paying would have changed the terms, but the feature was never load-bearing.
+Residents type their details in, the photograph goes to the private
+`valid-ids` bucket, and an authorised barangay officer checks the document by
+hand — which was always the real verification step. The reader only filled
+blanks faster.
+
+### How registration works now
+
+1. The resident types their name, birth date, ID type and ID number.
+2. They upload a photo of the ID. It goes to the private `valid-ids` bucket
+   under the existing Storage policies; nothing about it leaves the project.
+3. `profiles.id_verification` records **`pending_manual`** — the verdict still
+   comes from `idVerdict()` in `src/lib/idCheck.js` rather than being
+   hardcoded, so the rule lives in one place.
+4. The secretary reviews the document and the typed details before approving.
+
+A resident can never record `auto_verified` for themselves: the database
+guard `guard_profile_columns` refuses it, and no browser code can produce it.
+The ID-number mismatch rule in `idCheck.js` is **kept** even though nothing
+currently produces a reading to compare against — it is harmless, tested, and
+cheaper to keep than to reconstruct.
+
+### The retired endpoint
+
+`supabase/functions/id-extract` is a stub that returns **410 Gone**. It does
+not read the request body, touch `GEMINI_API_KEY`, open a database
+connection, reserve a rate-limit slot, or log anything.
+
+It is a stub rather than a deletion on purpose: deleting the function would
+answer a browser still running an older bundle with a 404 and a CORS failure,
+which looks like a broken site. 410 is the honest answer and is readable by
+the caller.
+
+**It can be deleted entirely once no deployed frontend calls it** — that is,
+after the manual-only build has been live long enough that no cached bundle
+is still in use. Delete the function, then this `[functions.id-extract]`
+entry in `config.toml`.
+
+### What was deliberately kept
+
+| Kept | Why |
+| --- | --- |
+| `profiles.id_verification`, its CHECK, `guard_profile_columns` | the manual review workflow runs on them |
+| `ai_extraction_attempts`, its purge function and cron job | historical records; retention unchanged |
+| `supabase/proposals/ai-id-extraction.sql.proposed` | migration 32 is recorded in production; the file documents it |
+| `src/lib/idCheck.js` and its tests | the mismatch rule and the provenance states |
+| `GEMINI_API_KEY` (production secret) | removed only after the retired endpoint is deployed and verified |
+
+
 ## What protects the biometric data
 
 Worth stating precisely, because it is easy to overclaim:
